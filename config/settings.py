@@ -8,6 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-change-me-before-deployment")
 RUNNING_DEVELOPMENT_SERVER = len(sys.argv) > 1 and sys.argv[1] == "runserver"
+RUNNING_TESTS = "test" in sys.argv
 # Django's built-in runserver is HTTP-only. Keep it usable locally even when
 # the shell has a deployment-style DEBUG value such as "release" set.
 DEBUG = RUNNING_DEVELOPMENT_SERVER or os.getenv("DEBUG", "True").lower() == "true"
@@ -31,7 +32,7 @@ STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else 
 STORAGES = {
     "staticfiles": {
     "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
-        if DEBUG or RUNNING_DEVELOPMENT_SERVER
+        if DEBUG or RUNNING_DEVELOPMENT_SERVER or RUNNING_TESTS
         else "whitenoise.storage.CompressedManifestStaticFilesStorage"
     }
 }

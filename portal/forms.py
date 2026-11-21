@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
-from .models import PatientProfile, MedicalNote
+from .models import PatientProfile, MedicalNote, EmergencyContact, HospitalEnquiry, Referral, Hospital, HospitalService
 
 class RegisterForm(UserCreationForm):
     email = forms.EmailField()
@@ -34,3 +34,24 @@ class MedicalNoteForm(forms.ModelForm):
 
 class ChatForm(forms.Form):
     message = forms.CharField(max_length=2000, strip=True)
+
+class EmergencyContactForm(forms.ModelForm):
+    class Meta: model = EmergencyContact; fields = ("name", "phone", "relationship")
+
+class HospitalEnquiryForm(forms.ModelForm):
+    class Meta: model = HospitalEnquiry; fields = ("hospital", "message")
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["hospital"].queryset = Hospital.objects.order_by("city", "name")
+
+class ReferralForm(forms.ModelForm):
+    class Meta: model = Referral; fields = ("hospital", "summary")
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["hospital"].queryset = Hospital.objects.order_by("city", "name")
+
+class HospitalProfileForm(forms.ModelForm):
+    class Meta: model = Hospital; fields = ("name", "city", "address", "latitude", "longitude", "phone", "website")
+
+class HospitalServiceForm(forms.ModelForm):
+    class Meta: model = HospitalService; fields = ("service_type", "specialty_name", "status", "details", "source", "expires_at")
