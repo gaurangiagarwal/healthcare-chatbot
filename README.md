@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # CareBridge — Healthcare Chatbot and Patient Assistance System
 
 CareBridge is a college Agile mini project built with Django. It gives patients a protected dashboard, private profile and notes, educational rule-based health chat, and a fictional doctor directory with appointment booking. The chatbot is not a medical device and does not diagnose or prescribe.
@@ -96,3 +97,7 @@ Before production: use HTTPS; restrict hosts; rotate secrets; verify backups and
 ## Screenshots
 
 Add your own screenshots after running the application. Do not use fabricated screenshots as evidence of a deployment or team review.
+=======
+# healthcare-chatbot
+Healthcare Chatbot developed using Django and Agile Scrum methodology
+>>>>>>> 609fc60b4060c96c9e045369310bf9cfb704ce79
