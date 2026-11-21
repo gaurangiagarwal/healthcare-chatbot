@@ -1,1 +1,33 @@
-{% extends 'portal/base.html' %}{% block content %}<a href="{% url 'doctors' %}">← Doctor directory</a><div class="panel mt-3"><span class="badge text-bg-light text-primary">{{ doctor.specialization }}</span><h1 class="h2 fw-bold mt-3">{{ doctor.name }}</h1><p>{{ doctor.qualification }} · {{ doctor.experience }} years experience</p><p>{{ doctor.bio }}</p>{% if doctor.fee %}<p>Consultation fee: ₹{{ doctor.fee }}</p>{% endif %}<hr><h2 class="h5 fw-bold">Available appointments</h2>{% for slot in slots %}<div class="list-row"><span>{{ slot.starts_at|date:'l, M j, Y · g:i A' }}</span><form method="post" action="{% url 'book_appointment' slot.id %}">{% csrf_token %}<button class="btn btn-primary btn-sm">Book slot</button></form></div>{% empty %}<p>No future slots available. Please check back later.</p>{% endfor %}</div>{% endblock %}
+{% extends 'portal/base.html' %}{% block content %}<a
+  href="{% url 'doctors' %}"
+  >← Doctor directory</a
+>
+<div class="panel mt-3">
+  <span class="badge text-bg-light text-primary"
+    >{{ doctor.specialization }}</span
+  >
+  <h1 class="h2 fw-bold mt-3">{{ doctor.name }}</h1>
+  <p>
+    {{ doctor.qualification }} · {{ doctor.experience }} years
+    experience
+  </p>
+  <p>{{ doctor.bio }}</p>
+  {% if doctor.fee %}
+  <p>Consultation fee: ₹{{ doctor.fee }}</p>
+  {% endif %}
+  <hr />
+  <h2 class="h5 fw-bold">Available appointments</h2>
+  {% for slot in slots %}
+  <div class="list-row">
+    <span>{{ slot.starts_at|date:'l, M j, Y · g:i A' }}</span>
+    <form method="post" action="{% url 'book_appointment' slot.id %}">
+      {% csrf_token %}<button class="btn btn-primary btn-sm">
+        Book slot
+      </button>
+    </form>
+  </div>
+  {% empty %}
+  <p>No future slots available. Please check back later.</p>
+  {% endfor %}
+</div>
+{% endblock %}

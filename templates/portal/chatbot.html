@@ -1,5 +1,87 @@
-{% extends 'portal/base.html' %}{% block title %}Health chat{% endblock %}{% block content %}<div class="row justify-content-center"><div class="col-lg-9"><div class="d-flex justify-content-between align-items-end mb-3"><div><p class="eyebrow mb-1">GENERAL WELLNESS</p><h1 class="h2 fw-bold">Health assistant</h1></div><a href="{% url 'chat_history' %}">Chat history</a></div><div class="alert alert-warning small">This assistant shares general information only. It cannot diagnose or prescribe. For emergencies, contact local emergency services immediately.</div><section class="chat-panel"><div id="chat-log" aria-live="polite">{% for item in history %}<div class="message {{ item.role }}"><div>{{ item.content|linebreaksbr }}</div><small>{{ item.created_at|date:'M j, g:i A' }}</small></div>{% empty %}<div class="message bot"><div>Hello {{ user.first_name|default:user.username }}! What general health information can I help with?</div></div>{% endfor %}</div><form id="chat-form" class="chat-compose">{% csrf_token %}<label class="visually-hidden" for="chat-input">Your message</label><input id="chat-input" class="form-control" maxlength="2000" placeholder="Describe what you're wondering about…" autocomplete="off" required><button class="btn btn-primary">Send</button></form><div id="chat-error" class="text-danger small mt-2" role="alert"></div></section></div></div>{% endblock %}{% block scripts %}<script>
-const form=document.getElementById('chat-form'),input=document.getElementById('chat-input'),log=document.getElementById('chat-log');
-form.addEventListener('submit',async e=>{e.preventDefault();let message=input.value.trim();if(!message)return;append(message,'user');input.value='';try{const response=await fetch('{% url "chat_send" %}',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':form.querySelector('[name=csrfmiddlewaretoken]').value},body:JSON.stringify({message})});const data=await response.json();if(!response.ok)throw Error(data.error||'Unable to send message.');append(data.reply,'bot');}catch(err){document.getElementById('chat-error').textContent=err.message;}});
-function append(text,role){const el=document.createElement('div');el.className='message '+role;const body=document.createElement('div');body.textContent=text;el.append(body);log.append(el);log.scrollTop=log.scrollHeight;}
-</script>{% endblock %}
+{% extends 'portal/base.html' %}{% block title %}Health
+chat{% endblock %}{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+    <div class="d-flex justify-content-between align-items-end mb-3">
+      <div>
+        <p class="eyebrow mb-1">GENERAL WELLNESS</p>
+        <h1 class="h2 fw-bold">Health assistant</h1>
+      </div>
+      <a href="{% url 'chat_history' %}">Chat history</a>
+    </div>
+    <div class="alert alert-warning small">
+      This assistant shares general information only. It cannot diagnose or
+      prescribe. For emergencies, contact local emergency services immediately.
+    </div>
+    <section class="chat-panel">
+      <div id="chat-log" aria-live="polite">
+        {% for item in history %}
+        <div class="message {{ item.role }}">
+          <div>{{ item.content|linebreaksbr }}</div>
+          <small>{{ item.created_at|date:'M j, g:i A' }}</small>
+        </div>
+        {% empty %}
+        <div class="message bot">
+          <div>
+            Hello {{ user.first_name|default:user.username }}! What general health
+            information can I help with?
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <form id="chat-form" class="chat-compose">
+        {% csrf_token %}<label
+          class="visually-hidden"
+          for="chat-input"
+          >Your message</label
+        ><input
+          id="chat-input"
+          class="form-control"
+          maxlength="2000"
+          placeholder="Describe what you're wondering about…"
+          autocomplete="off"
+          required
+        /><button class="btn btn-primary">Send</button>
+      </form>
+      <div id="chat-error" class="text-danger small mt-2" role="alert"></div>
+    </section>
+  </div>
+</div>
+{% endblock %}{% block scripts %}
+<script>
+  const form = document.getElementById("chat-form"),
+    input = document.getElementById("chat-input"),
+    log = document.getElementById("chat-log");
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    let message = input.value.trim();
+    if (!message) return;
+    append(message, "user");
+    input.value = "";
+    try {
+      const response = await fetch("{% url "chat_send" %}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": form.querySelector("[name=csrfmiddlewaretoken]").value,
+        },
+        body: JSON.stringify({ message }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw Error(data.error || "Unable to send message.");
+      append(data.reply, "bot");
+    } catch (err) {
+      document.getElementById("chat-error").textContent = err.message;
+    }
+  });
+  function append(text, role) {
+    const el = document.createElement("div");
+    el.className = "message " + role;
+    const body = document.createElement("div");
+    body.textContent = text;
+    el.append(body);
+    log.append(el);
+    log.scrollTop = log.scrollHeight;
+  }
+</script>
+{% endblock %}

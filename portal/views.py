@@ -32,7 +32,10 @@ def profile(request):
 
 @login_required
 def chatbot(request):
-    history = request.user.chat_messages.all()[-40:]
+    # Query newest messages first (negative queryset slicing is unsupported),
+    # then reverse them so the chat appears oldest-to-newest in the UI.
+    history = list(request.user.chat_messages.order_by("-created_at")[:40])
+    history.reverse()
     return render(request, "portal/chatbot.html", {"history": history})
 
 @login_required

@@ -64,3 +64,24 @@ class BookingFlowTests(TestCase):
         past=AppointmentSlot.objects.create(doctor=self.doctor,starts_at=timezone.now()-timedelta(days=1)); self.client.force_login(self.user); self.client.post(reverse("book_appointment",args=[past.pk])); self.assertFalse(Appointment.objects.filter(slot=past).exists())
     def test_doctor_search(self):
         self.client.force_login(self.user); self.assertContains(self.client.get(reverse("doctors"),{"q":"Family"}),"Dr. Test"); self.assertNotContains(self.client.get(reverse("doctors"),{"q":"Neurology"}),"Dr. Test")
+
+@override_settings(SECURE_SSL_REDIRECT=False, STORAGES={"staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}})
+class TemplatePageTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("pagepatient", password="A-strong-pass-42", first_name="Asha")
+        PatientProfile.objects.create(user=self.user)
+        self.doctor = Doctor.objects.create(name="Dr. Page Test", specialization="Family Medicine", experience=5, qualification="MBBS")
+        self.slot = AppointmentSlot.objects.create(doctor=self.doctor, starts_at=timezone.now()+timedelta(days=2))
+
+    def test_public_pages_render(self):
+        for name in ("home", "register", "login"):
+            with self.subTest(page=name):
+                self.assertEqual(self.client.get(reverse(name)).status_code, 200)
+
+    def test_patient_pages_render(self):
+        self.client.force_login(self.user)
+        urls = ("dashboard", "profile", "chatbot", "doctors", "appointments", "chat_history", "notes")
+        for name in urls:
+            with self.subTest(page=name):
+                self.assertEqual(self.client.get(reverse(name)).status_code, 200)
+        self.assertEqual(self.client.get(reverse("doctor_detail", args=[self.doctor.pk])).status_code, 200)
