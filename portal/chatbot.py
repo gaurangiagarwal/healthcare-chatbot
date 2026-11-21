@@ -214,12 +214,50 @@ def _doctor_contact_request(message):
     return bool(mentions_clinician and asks_contact)
 
 
+def _doctor_recommendation_request(message):
+    mentions_clinician = re.search(r"\b(?:doctor|doctors|physician|clinician|specialist)\b", message, re.I)
+    asks_for_recommendation = re.search(
+        r"\b(?:which|what|recommend|consult|see|should|prescribe|suggest|specialist|concern|best|for)\b",
+        message,
+        re.I,
+    )
+    return bool(mentions_clinician and asks_for_recommendation)
+
+
 def _doctor_contact_reply():
     return (
         "CareBridge's doctor directory uses fictional demo profiles and does not store phone numbers, "
         "so I can't give you a verified doctor's name and number. Use Find a doctor in the navigation "
         "to browse the sample profiles and appointment slots. For real care, contact your local clinic "
         "or use an official provider directory. For an emergency, call your local emergency number."
+    )
+
+
+def _doctor_recommendation_reply(symptoms, message):
+    text = message.lower()
+    if re.search(r"\b(?:child|children|kid|son|daughter|baby|infant)\b", text):
+        specialty = "Pediatrics"
+    elif re.search(r"\b(?:rash|skin|mole|acne)\b", text):
+        specialty = "Dermatology"
+    elif re.search(r"\b(?:heart|cardiac|palpitation)\b", text):
+        specialty = "Cardiology"
+    elif symptoms:
+        # Fever, headache, cough, sore throat, and stomach discomfort are
+        # nonspecific; primary care is a reasonable first point of contact.
+        specialty = "Family Medicine / Primary Care"
+    else:
+        specialty = "Family Medicine / Primary Care"
+
+    if symptoms:
+        context = f"Based on the { _symptom_names(symptoms) } you reported, "
+    else:
+        context = "For a general health concern, "
+    return (
+        f"{context}{specialty} is a reasonable clinician to consult first. I can suggest a type "
+        "of clinician, but I cannot diagnose or prescribe medication. Use Find a doctor to browse "
+        "available demo profiles and appointment slots; those profiles are fictional and do not "
+        "include verified contact details. If you have severe chest pain, difficulty breathing, "
+        "confusion, or a severe headache with neck stiffness, seek emergency care now."
     )
 
 
@@ -244,6 +282,12 @@ def process_message(message, state=None):
         state = _empty_state()
         state["emergency_warning_signs"] = warning_signs
         return _doctor_contact_reply(), state
+
+    if _doctor_recommendation_request(text):
+        state["pending_information"] = []
+        state["last_question"] = None
+        state["stage"] = "complete"
+        return _doctor_recommendation_reply(state["symptoms"], text), state
 
     lower = text.lower()
     symptoms = detect_symptoms(text)

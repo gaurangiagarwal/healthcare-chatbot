@@ -91,6 +91,24 @@ class TemperatureFollowupRegressionTests(SimpleTestCase):
         self.assertIn("phone number", response)
         self.assertNotIn("101°C is not a plausible", response)
 
+    def test_recommends_a_doctor_type_for_reported_symptoms(self):
+        _, state = process_message("I have fever and headache", {})
+        response, state = process_message("Tell me which doctor I should prescribe to", state)
+        self.assertIn("family medicine", response.lower())
+        self.assertIn("primary care", response.lower())
+        self.assertIn("cannot diagnose or prescribe", response.lower())
+
+    def test_doctor_recommendation_does_not_repeat_old_temperature_warning(self):
+        _, state = process_message("I have fever", {})
+        _, state = process_message("Since yesterday, temperature is 101 degree Celsius", state)
+        response, state = process_message("Tell me which doctor I should consult", state)
+        self.assertIn("family medicine", response.lower())
+        self.assertNotIn("101°C is not a plausible", response)
+
+    def test_skin_and_child_concerns_route_to_matching_specialties(self):
+        self.assertIn("dermatology", process_message("Which doctor for a skin rash?", {})[0].lower())
+        self.assertIn("pediatrics", process_message("Which doctor for my child?", {})[0].lower())
+
     def test_answered_information_is_not_asked_again(self):
         _, state = process_message("I have fever and headache", {})
         _, state = process_message("Since yesterday, 101", state)
