@@ -75,6 +75,22 @@ class TemperatureFollowupRegressionTests(SimpleTestCase):
         self.assertIn("seek urgent medical care", response)
         self.assertIn("temperature_implausible", state["emergency_warning_signs"])
 
+    def test_repeated_implausible_reading_does_not_replay_the_same_answer(self):
+        _, state = process_message("I have fever", {})
+        first, state = process_message("Since yesterday, temperature is 101 degree Celsius", state)
+        repeated, state = process_message("I genuinely have 101 degree Celsius temp", state)
+        self.assertNotEqual(repeated, first)
+        self.assertIn("reading displayed", repeated)
+        self.assertIn("urgent medical care", repeated)
+
+    def test_doctor_contact_request_after_implausible_reading_gets_a_useful_answer(self):
+        _, state = process_message("I have fever", {})
+        _, state = process_message("Since yesterday, temperature is 101 degree Celsius", state)
+        response, state = process_message("give me doctor name and number i should contact to", state)
+        self.assertIn("Find a doctor", response)
+        self.assertIn("phone number", response)
+        self.assertNotIn("101°C is not a plausible", response)
+
     def test_answered_information_is_not_asked_again(self):
         _, state = process_message("I have fever and headache", {})
         _, state = process_message("Since yesterday, 101", state)

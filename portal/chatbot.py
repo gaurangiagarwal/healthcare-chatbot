@@ -153,6 +153,7 @@ def _empty_state():
         "last_question": None,
         "pending_information": [],
         "emergency_warning_signs": [],
+        "implausible_repeat_count": 0,
         "stage": "idle",
     }
 
@@ -207,6 +208,21 @@ def _implausible_temperature_reply(value, unit):
     )
 
 
+def _doctor_contact_request(message):
+    mentions_clinician = re.search(r"\b(?:doctor|doctors|physician|clinic|clinician)\b", message, re.I)
+    asks_contact = re.search(r"\b(?:number|phone|contact|call|name|reach|speak|appointment)\b", message, re.I)
+    return bool(mentions_clinician and asks_contact)
+
+
+def _doctor_contact_reply():
+    return (
+        "CareBridge's doctor directory uses fictional demo profiles and does not store phone numbers, "
+        "so I can't give you a verified doctor's name and number. Use Find a doctor in the navigation "
+        "to browse the sample profiles and appointment slots. For real care, contact your local clinic "
+        "or use an official provider directory. For an emergency, call your local emergency number."
+    )
+
+
 def process_message(message, state=None):
     """Return a safe reply and updated JSON-serializable conversation state."""
     text = " ".join(message.strip().split())
@@ -223,6 +239,12 @@ def process_message(message, state=None):
             state,
         )
 
+    if _doctor_contact_request(text):
+        warning_signs = state["emergency_warning_signs"]
+        state = _empty_state()
+        state["emergency_warning_signs"] = warning_signs
+        return _doctor_contact_reply(), state
+
     lower = text.lower()
     symptoms = detect_symptoms(text)
     negated_symptoms = detect_negated_symptoms(text)
@@ -232,6 +254,9 @@ def process_message(message, state=None):
     }
     temperature = parse_temperature(text, allow_unitless=waiting_for_temp or bool(TEMPERATURE_MARKER_RE.search(text)))
     unit_only = parse_temperature_unit(text)
+    temperature_updated = temperature is not None
+    previous_temperature = state.get("temperature")
+    previous_stage = state.get("stage")
     no_more = bool(re.search(r"\b(?:no|nope|not really),?\s+(?:just|only)\b", lower)) or lower in {"no", "nope", "no other symptoms"}
 
     if symptoms:
@@ -251,10 +276,12 @@ def process_message(message, state=None):
         temperature = _temperature_result(state["reported_temperature"], unit_only)
         state["temperature_unit"] = unit_only
         state["temperature"] = temperature
+        temperature_updated = True
     elif unit_only and state["stage"] == "temperature_implausible" and state["reported_temperature"] is not None:
         temperature = _temperature_result(state["reported_temperature"], unit_only)
         state["temperature_unit"] = unit_only
         state["temperature"] = temperature
+        temperature_updated = True
 
     if negated_symptoms and not symptoms:
         state["symptoms"] = [symptom for symptom in state["symptoms"] if symptom not in negated_symptoms]
@@ -263,12 +290,41 @@ def process_message(message, state=None):
             return "Thanks for clarifying. I won't treat that as a symptom. Tell me what general information you need.", state
 
     temperature = state["temperature"]
-    if temperature and temperature.get("plausible") is False:
+    if temperature_updated and temperature and temperature.get("plausible") is False:
+        same_implausible_reading = (
+            previous_stage == "temperature_implausible"
+            and previous_temperature
+            and temperature["value"] == previous_temperature.get("value")
+            and temperature["unit"] == previous_temperature.get("unit")
+        )
         state["emergency_warning_signs"] = list(dict.fromkeys([*state["emergency_warning_signs"], "temperature_implausible"]))
         state["pending_information"] = ["temperature_confirmation"]
         state["last_question"] = "temperature_confirmation"
         state["stage"] = "temperature_implausible"
+        if same_implausible_reading:
+            state["implausible_repeat_count"] += 1
+            if state["implausible_repeat_count"] == 1:
+                return (
+                    f"I understand that {temperature['value']:g}{DEGREE}{temperature['unit']} is the reading displayed. "
+                    "That value is outside the plausible human body-temperature range and cannot be interpreted "
+                    "as a body temperature. Please verify the thermometer and unit; seek urgent medical care "
+                    "if you are seriously unwell.",
+                    state,
+                )
+            return (
+                "I have recorded that reading. I can't confirm it as a human body temperature. Please recheck "
+                "the thermometer or contact a healthcare professional promptly if you feel unwell.",
+                state,
+            )
+        state["implausible_repeat_count"] = 0
         return _implausible_temperature_reply(temperature["value"], temperature["unit"]), state
+
+    if state["stage"] == "temperature_implausible" and not temperature_updated:
+        # Do not replay an old validation warning for unrelated user messages.
+        # Keep the warning in history, but clear active symptom follow-up state.
+        warning_signs = state["emergency_warning_signs"]
+        state = _empty_state()
+        state["emergency_warning_signs"] = warning_signs
 
     if state["symptoms"] and state["last_question"] == "temperature" and lower in {"yes", "yes i have", "i did", "yeah", "yep"}:
         state["pending_information"] = ["temperature_reading"]
