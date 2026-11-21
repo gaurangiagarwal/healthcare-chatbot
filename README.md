@@ -32,6 +32,8 @@ python manage.py runserver
 
 Open http://127.0.0.1:8000/. Register a patient account through the site. There are no seeded patient passwords. Create a Django admin account if desired with `python manage.py createsuperuser`.
 
+The chatbot keeps a separate context for each patient's conversation. Use **New conversation** in the chat page to start with empty context. Bot replies appear after a short three-second typing indicator.
+
 Settings load the optional `.env` file from the project root. Keep its generated secret private; `.gitignore` excludes it.
 
 ## Checks and tests

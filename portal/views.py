@@ -6,9 +6,9 @@ from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from .chatbot import reply
+from .chatbot import process_message
 from .forms import RegisterForm, ProfileForm, MedicalNoteForm
-from .models import PatientProfile, Doctor, AppointmentSlot, Appointment, ChatMessage, MedicalNote
+from .models import PatientProfile, Doctor, AppointmentSlot, Appointment, ChatConversation, ChatMessage, MedicalNote
 
 def home(request): return render(request, "portal/home.html")
 
@@ -32,11 +32,29 @@ def profile(request):
 
 @login_required
 def chatbot(request):
-    # Query newest messages first (negative queryset slicing is unsupported),
-    # then reverse them so the chat appears oldest-to-newest in the UI.
-    history = list(request.user.chat_messages.order_by("-created_at")[:40])
+    conversation = _active_conversation(request)
+    history = list(conversation.messages.order_by("-created_at")[:40])
     history.reverse()
-    return render(request, "portal/chatbot.html", {"history": history})
+    return render(request, "portal/chatbot.html", {"history": history, "conversation": conversation})
+
+
+def _active_conversation(request):
+    """Fetch this session's thread only when it belongs to the current user."""
+    conversation_id = request.session.get("active_chat_conversation_id")
+    conversation = ChatConversation.objects.filter(pk=conversation_id, patient=request.user).first() if conversation_id else None
+    if conversation is None:
+        conversation = ChatConversation.objects.create(patient=request.user)
+        request.session["active_chat_conversation_id"] = conversation.pk
+    return conversation
+
+
+@login_required
+def new_chat(request):
+    if request.method != "POST":
+        return redirect("chatbot")
+    conversation = ChatConversation.objects.create(patient=request.user)
+    request.session["active_chat_conversation_id"] = conversation.pk
+    return redirect("chatbot")
 
 @login_required
 def chat_send(request):
@@ -44,8 +62,19 @@ def chat_send(request):
     try: payload = json.loads(request.body); message = str(payload.get("message", "")).strip()
     except (json.JSONDecodeError, AttributeError): return JsonResponse({"error": "Invalid request"}, status=400)
     if not message or len(message) > 2000: return JsonResponse({"error": "Enter a message up to 2,000 characters."}, status=400)
-    response = reply(message)
-    ChatMessage.objects.bulk_create([ChatMessage(patient=request.user, role="user", content=message), ChatMessage(patient=request.user, role="bot", content=response)])
+    conversation_id = payload.get("conversation_id")
+    if conversation_id:
+        conversation = get_object_or_404(ChatConversation, pk=conversation_id, patient=request.user)
+        request.session["active_chat_conversation_id"] = conversation.pk
+    else:
+        conversation = _active_conversation(request)
+    response, state = process_message(message, conversation.state)
+    conversation.state = state
+    conversation.save(update_fields=["state", "updated_at"])
+    ChatMessage.objects.bulk_create([
+        ChatMessage(patient=request.user, conversation=conversation, role="user", content=message),
+        ChatMessage(patient=request.user, conversation=conversation, role="bot", content=response),
+    ])
     return JsonResponse({"reply": response})
 
 @login_required

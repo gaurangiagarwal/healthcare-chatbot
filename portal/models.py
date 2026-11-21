@@ -18,6 +18,16 @@ class Doctor(models.Model):
     bio = models.TextField(blank=True)
     def __str__(self): return f"{self.name} — {self.specialization}"
 
+class ChatConversation(models.Model):
+    """A patient's isolated chat thread and its small rule-based context."""
+    patient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_conversations")
+    state = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    class Meta:
+        ordering = ["-updated_at"]
+    def __str__(self): return f"Chat with {self.patient} ({self.pk})"
+
 class AppointmentSlot(models.Model):
     doctor = models.ForeignKey(Doctor, on_delete=models.CASCADE, related_name="slots")
     starts_at = models.DateTimeField()
@@ -38,6 +48,7 @@ class Appointment(models.Model):
 
 class ChatMessage(models.Model):
     patient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_messages")
+    conversation = models.ForeignKey(ChatConversation, on_delete=models.CASCADE, related_name="messages", null=True, blank=True)
     role = models.CharField(max_length=10, choices=[("user", "Patient"), ("bot", "Assistant")])
     content = models.TextField(max_length=2000)
     created_at = models.DateTimeField(auto_now_add=True)

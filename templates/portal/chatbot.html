@@ -7,7 +7,13 @@ chat{% endblock %}{% block content %}
         <p class="eyebrow mb-1">GENERAL WELLNESS</p>
         <h1 class="h2 fw-bold">Health assistant</h1>
       </div>
-      <a href="{% url 'chat_history' %}">Chat history</a>
+        <div class="d-flex align-items-center gap-3">
+          <a href="{% url 'chat_history' %}">Chat history</a>
+          <form method="post" action="{% url 'new_chat' %}">
+            {% csrf_token %}
+            <button class="btn btn-outline-primary btn-sm" type="submit">New conversation</button>
+          </form>
+        </div>
     </div>
     <div class="alert alert-warning small">
       This assistant shares general information only. It cannot diagnose or
@@ -42,6 +48,7 @@ chat{% endblock %}{% block content %}
           autocomplete="off"
           required
         /><button class="btn btn-primary">Send</button>
+        <input type="hidden" name="conversation_id" value="{{ conversation.id }}" />
       </form>
       <div id="chat-error" class="text-danger small mt-2" role="alert"></div>
     </section>
@@ -51,13 +58,16 @@ chat{% endblock %}{% block content %}
 <script>
   const form = document.getElementById("chat-form"),
     input = document.getElementById("chat-input"),
-    log = document.getElementById("chat-log");
+    log = document.getElementById("chat-log"),
+    sendButton = form.querySelector("button[type=submit], button:not([type])");
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     let message = input.value.trim();
     if (!message) return;
     append(message, "user");
     input.value = "";
+    sendButton.disabled = true;
+    const typing = append("CareBridge is thinking…", "bot typing");
     try {
       const response = await fetch("{% url "chat_send" %}", {
         method: "POST",
@@ -65,13 +75,22 @@ chat{% endblock %}{% block content %}
           "Content-Type": "application/json",
           "X-CSRFToken": form.querySelector("[name=csrfmiddlewaretoken]").value,
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({
+          message,
+          conversation_id: form.querySelector('[name="conversation_id"]').value,
+        }),
       });
       const data = await response.json();
       if (!response.ok) throw Error(data.error || "Unable to send message.");
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      typing.remove();
       append(data.reply, "bot");
     } catch (err) {
+      typing.remove();
       document.getElementById("chat-error").textContent = err.message;
+    } finally {
+      sendButton.disabled = false;
+      input.focus();
     }
   });
   function append(text, role) {
@@ -82,6 +101,7 @@ chat{% endblock %}{% block content %}
     el.append(body);
     log.append(el);
     log.scrollTop = log.scrollHeight;
+    return el;
   }
 </script>
 {% endblock %}
