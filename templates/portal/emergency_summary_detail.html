@@ -1,0 +1,22 @@
+{% extends 'portal/base.html' %}
+{% block title %}Emergency summary · MediReach{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div><p class="eyebrow">SAVED PRIVATELY</p><h1>Emergency handover summary</h1><p>Saved {{ case.created_at|date:'M j, Y · g:i A' }}</p></div>
+  <a class="btn btn-outline-primary" href="{% url 'emergency_summaries' %}">Back to saved summaries</a>
+</header>
+<section class="card p-4">
+  <p>This summary contains only information entered by you. It is not a diagnosis and has not been sent to emergency services.</p>
+  {% if case.reported_facts %}
+    <dl class="row">
+      {% for label, value in case.reported_facts.items %}
+        <dt class="col-sm-4">{{ label }}</dt><dd class="col-sm-8">{{ value|linebreaksbr }}</dd>
+      {% endfor %}
+    </dl>
+  {% else %}
+    <p>No details were included in this summary.</p>
+  {% endif %}
+  {% if case.location_shared %}<p><strong>Location was shared:</strong> {{ case.latitude }}, {{ case.longitude }}</p>{% endif %}
+  <a href="tel:112" class="btn btn-danger">Call 112</a>
+</section>
+{% endblock %}

@@ -1,3 +1,140 @@
-﻿{% extends 'portal/base.html' %}{% block title %}Emergency help Â· MediReach{% endblock %}{% block content %}<p class="eyebrow">IMMEDIATE HELP</p><h1>Emergency assistance</h1><div class="alert alert-danger"><h2 class="h4">If someone may be in immediate danger, call now.</h2><a class="btn btn-danger btn-lg" href="tel:112">Call 112</a><span class="small d-block mt-2">India emergency response number. Available without sign-in.</span></div><div class="row g-4"><section class="col-lg-6"><div class="card p-4"><h2 class="h4">Prepare a handover summary</h2><p>Only information you enter is included. Nothing is sent automatically.</p>{% for id,label in fields %}{% endfor %}<label class="form-label">Symptoms<textarea class="form-control" id="symptoms"></textarea></label><label class="form-label">Onset or duration<input class="form-control" id="onset"></label><label class="form-label">Temperature<input class="form-control" id="temperature"></label><label class="form-label">Relevant information<input class="form-control" id="relevant_information"></label><label class="form-label">Actions already taken<input class="form-control" id="actions_taken"></label>{% if user.is_authenticated %}<label class="d-block mt-2"><input type="checkbox" id="save-summary"> Save this summary to my account</label>{% endif %}<label><input type="checkbox" id="share-location"> Include my location (optional)</label><button class="btn btn-primary mt-3" id="make-summary">Create summary</button><pre id="summary" class="mt-3" aria-live="polite"></pre></div></section><section class="col-lg-6"><div class="card p-4"><h2 class="h4">Nearby care</h2><p>Directory records may be demonstrations. Availability is not live.</p><a class="btn btn-outline-primary" href="{% url 'hospitals' %}">Find hospitals</a> <a href="{% url 'first_aid' %}">First-aid guides</a><p class="mt-3">Save personal contacts in <a href="{% url 'emergency_profile' %}">Emergency Profile</a>.</p></div></section></div>{% endblock %}{% block scripts %}<script>
-document.getElementById('make-summary').onclick=async()=>{const facts={};['symptoms','onset','temperature','relevant_information','actions_taken'].forEach(k=>facts[k]=document.getElementById(k).value);let coords={};if(document.getElementById('share-location').checked){try{coords=await new Promise((ok,no)=>navigator.geolocation.getCurrentPosition(p=>ok({latitude:p.coords.latitude,longitude:p.coords.longitude}),no))}catch(e){alert('Location unavailable; none included.')}}const token=(document.cookie.match(/csrftoken=([^;]+)/)||[])[1]||'';const r=await fetch('{% url "api_emergency_summary" %}',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':token},body:JSON.stringify({reported_facts:facts,location_consent:!!coords.latitude,save:!!document.getElementById('save-summary')?.checked,...coords})});const d=await r.json();const box=document.getElementById('summary');box.textContent=d.title+'\n'+Object.entries(d.reported_facts).map(([k,v])=>k+': '+v).join('\n')+'\n'+d.notice;const b=document.createElement('button');b.className='btn btn-sm btn-outline-secondary';b.textContent='Copy summary';b.onclick=()=>navigator.clipboard.writeText(box.textContent);box.after(b)};
-</script>{% endblock %}
+{% extends 'portal/base.html' %}
+{% block title %}Emergency help · MediReach{% endblock %}
+{% block content %}
+<p class="eyebrow">IMMEDIATE HELP</p>
+<h1>Emergency assistance</h1>
+<div class="alert alert-danger">
+  <h2 class="h4">If someone may be in immediate danger, call now.</h2>
+  <a class="btn btn-danger btn-lg" href="tel:112">Call 112</a>
+  <span class="small d-block mt-2">India emergency response number. Available without sign-in.</span>
+</div>
+<div class="row g-4">
+  <section class="col-lg-6">
+    <div class="card p-4">
+      <h2 class="h4">Prepare a handover summary</h2>
+      <p>Only information you enter is included. Nothing is sent automatically.</p>
+      <form id="emergency-summary-form">
+        {% csrf_token %}
+        <label class="form-label" for="symptoms">Symptoms</label>
+        <textarea class="form-control mb-3" id="symptoms" maxlength="1000"></textarea>
+        <label class="form-label" for="onset">Onset or duration</label>
+        <input class="form-control mb-3" id="onset" maxlength="1000">
+        <label class="form-label" for="temperature">Temperature</label>
+        <input class="form-control mb-3" id="temperature" maxlength="1000">
+        <label class="form-label" for="relevant_information">Relevant information</label>
+        <input class="form-control mb-3" id="relevant_information" maxlength="1000">
+        <label class="form-label" for="actions_taken">Actions already taken</label>
+        <input class="form-control mb-3" id="actions_taken" maxlength="1000">
+        {% if user.is_authenticated %}
+          <label class="d-block mt-2"><input type="checkbox" id="save-summary"> Save this summary to my account</label>
+        {% else %}
+          <p class="small">Sign in to save this summary for later.</p>
+        {% endif %}
+        <label class="d-block mt-2"><input type="checkbox" id="share-location"> Include my location (optional)</label>
+        <button class="btn btn-primary mt-3" id="make-summary" type="submit">Create summary</button>
+      </form>
+      <div id="summary-error" class="alert alert-warning mt-3" role="alert" hidden></div>
+      <section id="summary-result" class="mt-3" aria-live="polite" hidden></section>
+      {% if user.is_authenticated %}<p class="mt-3"><a href="{% url 'emergency_summaries' %}">View saved emergency summaries</a></p>{% endif %}
+    </div>
+  </section>
+  <section class="col-lg-6">
+    <div class="card p-4">
+      <h2 class="h4">Nearby care</h2>
+      <p>Directory records may be demonstrations. Availability is not live.</p>
+      <a class="btn btn-outline-primary" href="{% url 'hospitals' %}">Find hospitals</a>
+      <a href="{% url 'first_aid' %}">First-aid guides</a>
+      <p class="mt-3">Save personal contacts in <a href="{% url 'emergency_profile' %}">Emergency Profile</a>.</p>
+    </div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const form = document.getElementById('emergency-summary-form');
+  const button = document.getElementById('make-summary');
+  const errorBox = document.getElementById('summary-error');
+  const resultBox = document.getElementById('summary-result');
+  const fieldNames = ['symptoms', 'onset', 'temperature', 'relevant_information', 'actions_taken'];
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (button.disabled) return;
+    errorBox.hidden = true;
+    resultBox.hidden = true;
+    button.disabled = true;
+    button.textContent = 'Preparing...';
+    try {
+      const facts = Object.fromEntries(fieldNames.map((name) => [name, document.getElementById(name).value]));
+      const payload = {
+        reported_facts: facts,
+        location_consent: false,
+        save: Boolean(document.getElementById('save-summary')?.checked),
+      };
+      if (document.getElementById('share-location').checked) {
+        if (!navigator.geolocation) throw new Error('This browser does not provide location sharing. Uncheck location sharing and try again.');
+        const position = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, {timeout: 7000}));
+        payload.location_consent = true;
+        payload.latitude = position.coords.latitude;
+        payload.longitude = position.coords.longitude;
+      }
+      const response = await fetch('{% url "api_emergency_summary" %}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': form.querySelector('[name="csrfmiddlewaretoken"]').value,
+        },
+        body: JSON.stringify(payload),
+      });
+      let data;
+      try {
+        data = await response.json();
+      } catch (_) {
+        throw new Error('The service returned an unreadable response. Please try again.');
+      }
+      if (!data || typeof data !== 'object') throw new Error('The service returned an invalid response. Please try again.');
+      if (!response.ok) throw new Error(data.error || 'The summary could not be created. Check your entries and try again.');
+
+      resultBox.replaceChildren();
+      const heading = document.createElement('h3');
+      heading.textContent = data.title;
+      resultBox.append(heading);
+      const summaryText = [data.title, ...Object.entries(data.reported_facts).map(([key, value]) => `${key}: ${value}`), data.notice].join('\n');
+      const pre = document.createElement('pre');
+      pre.textContent = summaryText;
+      resultBox.append(pre);
+      const notice = document.createElement('p');
+      notice.textContent = data.saved ? 'Summary saved to your account.' : 'Summary created. It has not been saved to an account or sent to emergency services.';
+      resultBox.append(notice);
+      const copy = document.createElement('button');
+      copy.type = 'button';
+      copy.className = 'btn btn-sm btn-outline-secondary';
+      copy.textContent = 'Copy summary';
+      copy.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(summaryText); copy.textContent = 'Copied'; }
+        catch (_) { errorBox.textContent = 'Copy is unavailable in this browser. Select and copy the summary text.'; errorBox.hidden = false; }
+      });
+      resultBox.append(copy);
+      if (data.saved) {
+        const history = document.createElement('a');
+        history.className = 'btn btn-sm btn-link';
+        history.href = '{% url "emergency_summaries" %}';
+        history.textContent = 'Open saved summaries';
+        resultBox.append(history);
+      }
+      resultBox.hidden = false;
+    } catch (requestError) {
+      const message = requestError.code === 1 || requestError.code === 2 || requestError.code === 3
+        ? 'Location was not available. Uncheck location sharing and try again, or allow location access.'
+        : (requestError instanceof TypeError ? 'Network error. Check your connection and try again.' : requestError.message);
+      errorBox.textContent = `${message} Your entries are still here.`;
+      errorBox.hidden = false;
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Create summary';
+    }
+  });
+})();
+</script>
+{% endblock %}
