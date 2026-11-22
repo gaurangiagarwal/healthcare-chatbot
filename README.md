@@ -101,3 +101,4 @@ Add your own screenshots after running the application. Do not use fabricated sc
 # healthcare-chatbot
 Healthcare Chatbot developed using Django and Agile Scrum methodology
 >>>>>>> 609fc60b4060c96c9e045369310bf9cfb704ce79
+This project is made by Kashvi, Divisha, Gaurangi and Zara.
