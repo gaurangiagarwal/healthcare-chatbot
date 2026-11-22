@@ -1,0 +1,41 @@
+{% extends 'portal/base.html' %}{% block title %}Find a
+doctor{% endblock %}{% block content %}
+<p class="eyebrow mb-1">CARE DIRECTORY</p>
+<h1 class="h2 fw-bold">Find a doctor</h1>
+<p class="text-secondary">
+  Browse directory profiles. Demonstration profiles are fictional and do not confirm a real affiliation or availability.
+</p>
+<form class="d-flex gap-2 my-4" method="get">
+  <input
+    class="form-control"
+    name="q"
+    value="{{ query }}"
+    placeholder="Search by name or specialty"
+  /><button class="btn btn-primary">Search</button>
+</form>
+<div class="row g-3">
+  {% for doctor in doctors %}
+  <div class="col-md-6 col-lg-4">
+    <div class="doctor-card h-100">
+      <div class="doctor-icon">🩺</div>
+      <span class="badge text-bg-light text-primary"
+        >{{ doctor.specialization }}</span
+      >
+      <h2 class="h5 fw-bold mt-3">{{ doctor.name }}</h2>
+      {% if doctor.hospital %}<p>{{ doctor.hospital.name }} · {{ doctor.hospital.city }}</p>{% endif %}
+      <p class="small">Profile status: {{ doctor.verification_status|title }}</p>
+      {% if doctor.contact_route %}<a class="btn btn-sm btn-outline-secondary" href="{{ doctor.contact_route }}">Hospital contact route</a>{% endif %}
+      <p class="text-secondary">
+        {{ doctor.qualification }} · {{ doctor.experience }} years
+        experience
+      </p>
+      <a class="btn btn-outline-primary" href="{% url 'doctor_detail' doctor.id %}"
+        >View availability</a
+      >
+    </div>
+  </div>
+  {% empty %}
+  <p>No doctors matched that search.</p>
+  {% endfor %}
+</div>
+{% endblock %}

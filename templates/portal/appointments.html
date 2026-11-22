@@ -1,0 +1,39 @@
+{% extends 'portal/base.html' %}{% block title %}Appointments{% endblock %}{% block content %}
+<h1 class="h2 fw-bold">My appointments</h1>
+<p class="text-secondary">Your visit schedule and appointment history.</p>
+<div class="panel mt-4">
+  {% for appt in appointments %}
+  <div class="list-row flex-wrap">
+    <div>
+      <strong>{{ appt.slot.doctor.name }}</strong>
+      <div class="small text-secondary">
+        {{ appt.slot.doctor.specialization }} · {{ appt.slot.starts_at|date:'M j, Y · g:i A' }}
+      </div>
+    </div>
+    <div>
+      <span
+        class="badge {% if appt.status == 'booked' %}text-bg-success{% else %}text-bg-secondary{% endif %}"
+        >{{ appt.get_status_display }}</span
+      >{% if appt.status == 'booked' and appt.slot.starts_at > now %}
+      <form
+        method="post"
+        action="{% url 'cancel_appointment' appt.id %}"
+        class="d-inline"
+      >
+        {% csrf_token %}<button
+          class="btn btn-sm btn-outline-danger ms-2"
+        >
+          Cancel
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% empty %}
+  <p>
+    No appointments to show yet.
+    <a href="{% url 'doctors' %}">Find a doctor</a>.
+  </p>
+  {% endfor %}
+</div>
+{% endblock %}

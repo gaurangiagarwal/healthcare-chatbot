@@ -1,0 +1,1 @@
+{% extends 'portal/base.html' %}{% block title %}Referral enquiry · MediReach{% endblock %}{% block content %}<h1>Referral enquiry</h1><p>Coordination demo only, not an admission request or emergency dispatch.</p><div class="card p-4"><form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Submit enquiry</button></form></div>{% endblock %}

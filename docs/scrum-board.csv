@@ -1,0 +1,9 @@
+Story ID,Title,Description,Priority,Sprint,Story Points,Acceptance Criteria,Status
+US-01,Patient registration and login,"As a patient, I want to register and log in so that I can securely access my healthcare dashboard.",Must,1,5,"Unique valid account; hashed password; invalid login error; protected routes",To Do
+US-02,Manage patient profile,"As a patient, I want to update my profile so that my information remains accurate.",Must,1,3,"Patient updates own profile; validation errors shown; ownership enforced",To Do
+US-03,Symptom guidance chatbot,"As a patient, I want to describe symptoms to a chatbot so that I can receive general guidance.",Must,2,8,"Supported symptom response; follow-up; emergency escalation; saved messages",To Do
+US-04,Common health questions,"As a patient, I want to ask health questions so that I can learn about common symptoms and prevention.",Should,2,5,"Supported topics answered; unknown fallback; no diagnosis or prescriptions",To Do
+US-05,Search doctor directory,"As a patient, I want to search doctors by specialization so that I can find a suitable doctor.",Must,3,3,"Search by name/specialty; future available slots shown",To Do
+US-06,Book appointment,"As a patient, I want to book an appointment so that I can schedule a consultation.",Must,3,8,"Future slot booked once; past/taken rejected; own cancel; released slot",To Do
+US-07,Review chatbot history,"As a patient, I want to view previous chatbot conversations so that I can refer to earlier guidance.",Should,4,3,"Patient-scoped chat history; message search; no cross-account access",To Do
+US-08,Track medical activity,"As a patient, I want appointment and medical history so that I can track my activities.",Should,4,5,"Own appointment statuses; private notes; accurate dashboard",To Do
