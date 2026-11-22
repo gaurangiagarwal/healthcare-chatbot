@@ -100,7 +100,12 @@
         clearPanel('Conversation support'); paragraph('General information only. For urgent symptoms, call 112 or contact a qualified healthcare professional.');
         link('Find Hospitals', '/hospitals/'); link('First-Aid Centre', '/first-aid/');
     }
-    (data.actions || []).forEach((action) => link(action.label, action.href));
+    const emergencyLinksAlreadyRendered = data.response_type === 'emergency_alert'
+      ? new Set(['tel:112', '/hospitals/'])
+      : new Set();
+    (data.actions || [])
+      .filter((action) => !emergencyLinksAlreadyRendered.has(action.href))
+      .forEach((action) => link(action.label, action.href));
   }
   function renderGuide(guide) {
     const card = document.createElement('section'); card.className = 'context-guide';

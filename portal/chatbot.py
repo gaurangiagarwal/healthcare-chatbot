@@ -6,18 +6,6 @@ import re
 TEMPERATURE_PLAUSIBLE_RANGES = {"F": (80.0, 115.0), "C": (26.0, 46.0)}
 DEGREE = chr(176)
 
-EMERGENCY_PATTERNS = {
-    "severe_chest_pain": r"\bsevere chest pain\b|\bchest pain\b",
-    "breathing_difficulty": r"\b(?:can't|cannot|unable to) breathe\b|\bbreathing difficulty\b|\bdifficulty breathing\b|\bshortness of breath\b",
-    "unconsciousness": r"\bunconscious\b",
-    "severe_bleeding": r"\bsevere bleeding\b",
-    "stroke_warning": r"\bstroke\b",
-    "suicidal_crisis": r"\bsuicidal\b",
-    "confusion": r"\bconfus(?:ed|ion)\b",
-    "sudden_severe_headache": r"\bsudden severe headache\b",
-    "severe_headache_neck_stiffness": r"\bsevere headache\b.*\bneck stiffness\b|\bneck stiffness\b.*\bsevere headache\b",
-}
-
 SYMPTOMS = {
     "fever": (r"\bfever\b", r"\bfebrile\b"),
     "cough": (r"\bcough(?:ing)?\b",),
@@ -158,16 +146,6 @@ def _empty_state():
     }
 
 
-def _emergency_warning_signs(message):
-    text = message.lower().replace(chr(8217), "'")
-    signs = []
-    for name, pattern in EMERGENCY_PATTERNS.items():
-        match = re.search(pattern, text, re.I)
-        if match and not _is_negated(text, match.start()):
-            signs.append(name)
-    return signs
-
-
 def _temperature_text(temperature):
     degree = DEGREE
     if temperature["unit"] == "F":
@@ -262,20 +240,20 @@ def _doctor_recommendation_reply(symptoms, message):
 
 
 def process_message(message, state=None):
-    """Return a safe reply and updated JSON-serializable conversation state."""
+    """Return a rule-based reply only after the central emergency screen."""
     text = " ".join(message.strip().split())
     state = {**_empty_state(), **(state or {})}
-    warnings = _emergency_warning_signs(text)
-    if warnings:
-        state["emergency_warning_signs"] = list(dict.fromkeys([*state["emergency_warning_signs"], *warnings]))
+    from portal.services.safety import assess_emergency
+
+    emergency = assess_emergency(text)
+    if emergency["is_emergency"]:
+        state["emergency_warning_signs"] = list(dict.fromkeys([
+            *state["emergency_warning_signs"], *emergency["matched_warning_signs"]
+        ]))
         state["pending_information"] = []
         state["last_question"] = None
         state["stage"] = "emergency"
-        return (
-            "This may be an emergency. Contact your local emergency number or go to the "
-            "nearest emergency department now. Do not wait for a chatbot response.",
-            state,
-        )
+        return emergency["message"], state
 
     if _doctor_contact_request(text):
         warning_signs = state["emergency_warning_signs"]
