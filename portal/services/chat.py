@@ -64,20 +64,21 @@ def respond(message, state=None, user=None, latitude=None, longitude=None):
     if emergency["is_emergency"]:
         next_state = dict(state)
         next_state["emergency_warning_signs"] = list(dict.fromkeys(
-            [*next_state.get("emergency_warning_signs", []), *emergency["warning_signs"]]
+            [*next_state.get("emergency_warning_signs", []), *emergency["matched_warning_signs"]]
         ))
         next_state["last_question"] = None
         next_state["pending_information"] = []
         next_state["stage"] = "emergency"
-        guide = get_first_aid_guide(emergency["guide"]) if emergency["guide"] else None
         return ({
-            "reply": "Potential emergency warning signs were mentioned. Call 112 now in India. Do not wait for more chatbot questions. Follow the emergency operator's instructions.",
+            "reply": emergency["message"],
             "intent": "medical_emergency",
             "response_type": "emergency_alert",
             "emergency": True,
-            "emergency_number": "112",
+            "emergency_number": emergency["emergency_number"],
+            "urgency_level": emergency["urgency_level"],
+            "matched_warning_signs": emergency["matched_warning_signs"],
             "actions": [{"label": "Call 112", "href": "tel:112"}, {"label": "Find nearby hospitals", "href": "/hospitals/"}],
-            "first_aid": guide,
+            "first_aid": None,
             "warning_signs": emergency["warning_signs"],
         }, next_state)
 

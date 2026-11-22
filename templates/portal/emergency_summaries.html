@@ -1,0 +1,17 @@
+{% extends 'portal/base.html' %}
+{% block title %}Saved emergency summaries · MediReach{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <div><p class="eyebrow">SAVED PRIVATELY</p><h1>Emergency summaries</h1><p>Only you can view summaries saved to your account.</p></div>
+  <a class="btn btn-outline-primary" href="{% url 'emergency' %}">Prepare a summary</a>
+</header>
+{% for summary in summaries %}
+  <a class="activity-row" href="{% url 'emergency_summary_detail' summary.id %}">
+    <span class="activity-icon amber">!</span>
+    <span><strong>Emergency handover summary</strong><small>Saved {{ summary.created_at|date:'M j, Y · g:i A' }}</small></span>
+    <b>→</b>
+  </a>
+{% empty %}
+  <div class="empty-state"><strong>No saved summaries yet</strong><p>Create and save a handover summary to find it here later.</p><a href="{% url 'emergency' %}">Prepare a summary</a></div>
+{% endfor %}
+{% endblock %}

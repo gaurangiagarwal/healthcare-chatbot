@@ -1,4 +1,5 @@
 import json
+import math
 from functools import wraps
 from django.contrib import messages
 from django.contrib.auth import login
@@ -14,7 +15,6 @@ from .services.resources import (
     retrieve_first_aid_guide, search_doctors, search_hospitals,
 )
 from .services.first_aid import list_first_aid_guides
-from .services.safety import assess_emergency
 from .forms import (
     RegisterForm, ProfileForm, MedicalNoteForm, EmergencyContactForm,
     HospitalEnquiryForm, ReferralForm, HospitalProfileForm, HospitalServiceForm,
@@ -39,6 +39,7 @@ def dashboard(request):
     return render(request, "portal/dashboard.html", {
         "recent_conversations": request.user.chat_conversations.all()[:4],
         "recent_contacts": request.user.emergency_contacts.all()[:4],
+        "recent_emergency_summaries": request.user.emergency_cases.order_by("-created_at")[:4],
         "recent_referrals": request.user.referrals.select_related("hospital")[:4],
         "chats_count": request.user.chat_messages.filter(role="user").count(),
     })
@@ -237,17 +238,46 @@ def emergency_summary_api(request):
             return JsonResponse({"error": "reported_facts must be an object"}, status=400)
     except (json.JSONDecodeError, AttributeError):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
-    for key in ("symptoms", "onset", "temperature", "relevant_information", "actions_taken"):
-        if len(str(facts.get(key, ""))) > 1000:
-            return JsonResponse({"error": f"{key} is too long"}, status=400)
+    allowed_fields = ("symptoms", "onset", "temperature", "relevant_information", "actions_taken")
+    clean_facts = {}
+    for key in allowed_fields:
+        value = facts.get(key, "")
+        if value is None:
+            value = ""
+        if not isinstance(value, str):
+            return JsonResponse({"error": f"{key} must be text"}, status=400)
+        value = value.strip()
+        if len(value) > 1000:
+            return JsonResponse({"error": f"{key} must be 1,000 characters or fewer"}, status=400)
+        clean_facts[key] = value
+
+    save_requested = payload.get("save") is True
+    if save_requested and not request.user.is_authenticated:
+        return JsonResponse({"error": "Sign in to save this emergency summary."}, status=401)
+
     consent = payload.get("location_consent") is True
+    latitude = longitude = None
+    if consent:
+        raw_latitude, raw_longitude = payload.get("latitude"), payload.get("longitude")
+        if (
+            isinstance(raw_latitude, bool) or not isinstance(raw_latitude, (int, float))
+            or isinstance(raw_longitude, bool) or not isinstance(raw_longitude, (int, float))
+        ):
+            return JsonResponse({"error": "Allow location only after the browser provides valid coordinates."}, status=400)
+        try:
+            latitude, longitude = float(raw_latitude), float(raw_longitude)
+        except (OverflowError, TypeError, ValueError):
+            return JsonResponse({"error": "Allow location only after the browser provides valid coordinates."}, status=400)
+        if not (math.isfinite(latitude) and math.isfinite(longitude)
+                and -90 <= latitude <= 90 and -180 <= longitude <= 180):
+            return JsonResponse({"error": "Location coordinates are outside the valid range."}, status=400)
     summary = generate_emergency_summary(
-        facts,
+        clean_facts,
         location_consent=consent,
-        latitude=payload.get("latitude"),
-        longitude=payload.get("longitude"),
+        latitude=latitude,
+        longitude=longitude,
     )
-    if payload.get("save") is True and request.user.is_authenticated:
+    if save_requested:
         EmergencyCase.objects.create(
             user=request.user,
             reported_facts=summary["reported_facts"],
@@ -259,6 +289,18 @@ def emergency_summary_api(request):
     else:
         summary["saved"] = False
     return JsonResponse(summary)
+
+
+@login_required
+def emergency_summaries(request):
+    summaries = request.user.emergency_cases.order_by("-created_at")
+    return render(request, "portal/emergency_summaries.html", {"summaries": summaries})
+
+
+@login_required
+def emergency_summary_detail(request, case_id):
+    case = get_object_or_404(EmergencyCase, pk=case_id, user=request.user)
+    return render(request, "portal/emergency_summary_detail.html", {"case": case})
 
 
 def emergency_contacts_api(request):
