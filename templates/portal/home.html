@@ -24,9 +24,10 @@
   <div class="section-heading"><div><p class="eyebrow">EXPLORE MEDIREACH</p><h2>Useful tools, one calm place</h2></div></div>
   <div class="row g-3">
     <div class="col-md-6 col-xl-3"><a class="feature-card" href="{% url 'chatbot' %}"><span class="feature-index">01</span><h3>Emergency assistant</h3><p>Share what is happening, get urgent warning signs surfaced, and prepare a handover summary.</p><span class="card-arrow">Open assistant →</span></a></div>
-    <div class="col-md-6 col-xl-3"><a class="feature-card" href="{% url 'hospitals' %}"><span class="feature-index">02</span><h3>Find hospitals</h3><p>Search directory records by city, services, specialty, or your consented device location.</p><span class="card-arrow">Explore facilities →</span></a></div>
-    <div class="col-md-6 col-xl-3"><a class="feature-card" href="{% url 'first_aid' %}"><span class="feature-index">03</span><h3>First-aid centre</h3><p>Read short, sourced public guidance for common emergencies and injuries.</p><span class="card-arrow">View guides →</span></a></div>
-    <div class="col-md-6 col-xl-3"><a class="feature-card" href="{% url 'emergency_profile' %}"><span class="feature-index">04</span><h3>Emergency profile</h3><p>Optionally save emergency contacts to your signed-in account.</p><span class="card-arrow">Manage contacts →</span></a></div>
+    <div class="col-md-6 col-xl-3"><a class="feature-card" href="{% url 'hospitals' %}"><span class="feature-index">02</span><h3>Find hospitals</h3><p>Search facilities by area, city or PIN code, with an optional facility type.</p><span class="card-arrow">Explore facilities →</span></a></div>
+    <div class="col-md-6 col-xl-3"><a class="feature-card" href="{% url 'doctors' %}"><span class="feature-index">03</span><h3>Find doctors</h3><p>Search by specialization and area, with clear source and trust labels.</p><span class="card-arrow">Browse doctors</span></a></div>
+    <div class="col-md-6 col-xl-3"><a class="feature-card" href="{% url 'first_aid' %}"><span class="feature-index">04</span><h3>First-aid centre</h3><p>Read short, sourced public guidance for common emergencies and injuries.</p><span class="card-arrow">View guides →</span></a></div>
+    <div class="col-md-6 col-xl-3"><a class="feature-card" href="{% if user.is_authenticated %}{% url 'emergency_profile' %}{% else %}{% url 'login' %}?next={% url 'emergency_profile' %}{% endif %}"><span class="feature-index">05</span><h3>Emergency profile</h3><p>Optionally save emergency contacts to your signed-in account.</p><span class="card-arrow">{% if user.is_authenticated %}Manage contacts{% else %}Sign in to manage contacts{% endif %} →</span></a></div>
   </div>
 </section>
 <section class="trust-strip">

@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 import dj_database_url
 from dotenv import load_dotenv
 
@@ -12,6 +13,8 @@ RUNNING_TESTS = "test" in sys.argv
 # Django's built-in runserver is HTTP-only. Keep it usable locally even when
 # the shell has a deployment-style DEBUG value such as "release" set.
 DEBUG = RUNNING_DEVELOPMENT_SERVER or os.getenv("DEBUG", "True").lower() == "true"
+if not DEBUG and SECRET_KEY == "dev-only-change-me-before-deployment":
+    raise ImproperlyConfigured("Set SECRET_KEY to a unique secret before running MediReach with DEBUG disabled.")
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")]
 INSTALLED_APPS = ["django.contrib.admin", "django.contrib.auth", "django.contrib.contenttypes", "django.contrib.sessions", "django.contrib.messages", "django.contrib.staticfiles", "portal"]
 MIDDLEWARE = ["django.middleware.security.SecurityMiddleware", "whitenoise.middleware.WhiteNoiseMiddleware", "django.contrib.sessions.middleware.SessionMiddleware", "django.middleware.common.CommonMiddleware", "django.middleware.csrf.CsrfViewMiddleware", "django.contrib.auth.middleware.AuthenticationMiddleware", "django.contrib.messages.middleware.MessageMiddleware", "django.middleware.clickjacking.XFrameOptionsMiddleware"]

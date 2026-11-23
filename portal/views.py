@@ -11,9 +11,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from .services.chat import respond
 from .services.resources import (
-    generate_emergency_summary, get_emergency_contacts, get_hospital_details,
-    retrieve_first_aid_guide, search_doctors, search_hospitals,
+    doctor_queryset, doctors_for_hospital, generate_emergency_summary, get_emergency_contacts,
+    discover_providers, get_hospital_details, retrieve_first_aid_guide,
+    resolve_manual_location, serialize_doctor, search_mapped_facilities,
 )
+from .services.osm_facilities import FacilityDiscoveryError
 from .services.first_aid import list_first_aid_guides
 from .forms import (
     RegisterForm, ProfileForm, MedicalNoteForm, EmergencyContactForm,
@@ -40,7 +42,10 @@ def dashboard(request):
         "recent_conversations": request.user.chat_conversations.all()[:4],
         "recent_contacts": request.user.emergency_contacts.all()[:4],
         "recent_emergency_summaries": request.user.emergency_cases.order_by("-created_at")[:4],
-        "recent_referrals": request.user.referrals.select_related("hospital")[:4],
+        "recent_appointments": request.user.appointments.select_related("slot__doctor").order_by("-created_at")[:4],
+        "now": timezone.now(),
+        "recent_referrals": request.user.referrals.select_related("hospital").order_by("-created_at")[:4],
+        "recent_enquiries": request.user.hospital_enquiries.select_related("hospital").order_by("-created_at")[:4],
         "chats_count": request.user.chat_messages.filter(role="user").count(),
     })
 
@@ -64,6 +69,9 @@ def chatbot(request):
     return render(request, "portal/chatbot.html", {
         "history": history, "conversation": conversation,
         "conversations": request.user.chat_conversations.all()[:12],
+        "symptom_flow_active": isinstance(conversation.state, dict)
+        and isinstance(conversation.state.get("health_flow"), dict)
+        and conversation.state["health_flow"].get("active") is True,
     })
 
 
@@ -89,8 +97,26 @@ def new_chat(request):
 def chat_send(request):
     if request.method != "POST": return JsonResponse({"error": "POST required"}, status=405)
     try: payload = json.loads(request.body); message = str(payload.get("message", "")).strip()
-    except (json.JSONDecodeError, AttributeError): return JsonResponse({"error": "Invalid request"}, status=400)
+    except (ValueError, UnicodeDecodeError, AttributeError): return JsonResponse({"error": "Invalid request"}, status=400)
     if not message or len(message) > 2000: return JsonResponse({"error": "Enter a message up to 2,000 characters."}, status=400)
+    latitude, longitude = payload.get("latitude"), payload.get("longitude")
+    if (latitude is None) != (longitude is None):
+        return JsonResponse({"error": "Provide both latitude and longitude for a nearby search."}, status=400)
+    if latitude is not None:
+        if (
+            isinstance(latitude, bool) or not isinstance(latitude, (int, float))
+            or isinstance(longitude, bool) or not isinstance(longitude, (int, float))
+        ):
+            return JsonResponse({"error": "Nearby search coordinates must be numeric."}, status=400)
+        try:
+            latitude, longitude = float(latitude), float(longitude)
+        except (OverflowError, TypeError, ValueError):
+            return JsonResponse({"error": "Nearby search coordinates are outside valid ranges."}, status=400)
+        if not (
+            math.isfinite(latitude) and math.isfinite(longitude)
+            and -90 <= latitude <= 90 and -180 <= longitude <= 180
+        ):
+            return JsonResponse({"error": "Nearby search coordinates are outside valid ranges."}, status=400)
     conversation_id = payload.get("conversation_id")
     if conversation_id:
         conversation = get_object_or_404(ChatConversation, pk=conversation_id, patient=request.user)
@@ -101,8 +127,8 @@ def chat_send(request):
         message,
         conversation.state,
         user=request.user,
-        latitude=payload.get("latitude"),
-        longitude=payload.get("longitude"),
+        latitude=latitude,
+        longitude=longitude,
     )
     conversation.state = state
     conversation.save(update_fields=["state", "updated_at"])
@@ -113,26 +139,57 @@ def chat_send(request):
     return JsonResponse(response)
 
 def doctor_list(request):
-    doctors = Doctor.objects.select_related("hospital").all()
     query = request.GET.get("q", "").strip()
-    if query: doctors = doctors.filter(specialization__icontains=query) | doctors.filter(name__icontains=query)
-    return render(request, "portal/doctors.html", {"doctors": doctors.distinct(), "query": query})
+    specialty = request.GET.get("specialty", "").strip()
+    location = request.GET.get("location", "").strip()
+    source_errors = []
+    results = discover_providers(
+        result_types="doctor", query=query, specialty=specialty, location=location,
+        trust_category=request.GET.get("trust_category", ""),
+        source_category=request.GET.get("source_category", ""),
+        include_osm=bool(location), source_errors=source_errors,
+    )
+    doctors = [item for item in results if item["result_type"] == "doctor"]
+    mapped_doctors = [item for item in results if item["result_type"] == "osm_facility"]
+    location_error = next((error for error in source_errors if error["source"] == "Location"), None)
+    if not location:
+        location_status = "Location lookup: not requested."
+    elif resolve_manual_location(location):
+        location_status = "Location input: explicit coordinates accepted."
+    elif location_error:
+        location_status = f"Location lookup: {location_error['reason']} (status {location_error['status_code'] or 'not provided'})."
+    else:
+        location_status = "Location lookup: resolved."
+    provider_search_status = f"Provider search: {len(doctors)} MediReach doctor profile(s), {len(mapped_doctors)} mapped healthcare location(s), {len(source_errors)} source error(s)."
+    location_attribution = "Location search: OpenStreetMap Nominatim contributors." if location and not any(error["source"] == "Location" for error in source_errors) and not ("," in location and all(part.strip().replace(".", "", 1).replace("-", "", 1).isdigit() for part in location.split(",", 1))) else ""
+    return render(request, "portal/doctors.html", {
+        "doctors": doctors, "mapped_doctors": mapped_doctors, "query": query, "specialty": specialty,
+        "location": location, "trust_category": request.GET.get("trust_category", ""),
+        "source_category": request.GET.get("source_category", ""), "source_errors": source_errors,
+          "location_attribution": location_attribution, "location_status": location_status,
+          "provider_search_status": provider_search_status,
+    })
 
 @login_required
 def doctor_detail(request, doctor_id):
-    doctor = get_object_or_404(Doctor, pk=doctor_id)
-    slots = doctor.slots.filter(starts_at__gt=timezone.now()).exclude(appointments__status="booked")
-    return render(request, "portal/doctor_detail.html", {"doctor": doctor, "slots": slots})
+    doctor = get_object_or_404(doctor_queryset(), pk=doctor_id)
+    now = timezone.now()
+    slots = doctor.slots.filter(starts_at__gt=now).exclude(appointments__status="booked").distinct()
+    return render(request, "portal/doctor_detail.html", {"doctor": doctor, "provider": serialize_doctor(doctor), "slots": slots, "now": now})
 
 @login_required
 def book_appointment(request, slot_id):
     if request.method != "POST": return redirect("doctors")
+    selected_doctor_id = request.POST.get("doctor_id", "")
     try:
         with transaction.atomic():
             slot = AppointmentSlot.objects.select_for_update().get(pk=slot_id, starts_at__gt=timezone.now())
+            if not selected_doctor_id or not selected_doctor_id.isdecimal() or int(selected_doctor_id) != slot.doctor_id:
+                messages.error(request, "That slot does not match the selected doctor. Please choose a slot from the doctor's profile.")
+                return redirect("appointments")
             Appointment.objects.create(patient=request.user, slot=slot)
-        messages.success(request, "Appointment booked.")
-    except (AppointmentSlot.DoesNotExist, IntegrityError): messages.error(request, "That slot is no longer available. Please choose another.")
+        messages.success(request, "Local demo booking recorded. No provider was contacted and no appointment is confirmed.")
+    except (AppointmentSlot.DoesNotExist, IntegrityError): messages.error(request, "That local slot is no longer available. Please choose another.")
     return redirect("appointments")
 
 @login_required
@@ -141,13 +198,18 @@ def appointments(request): return render(request, "portal/appointments.html", {"
 @login_required
 def cancel_appointment(request, appointment_id):
     appointment = get_object_or_404(Appointment, pk=appointment_id, patient=request.user)
-    if request.method == "POST" and appointment.status == "booked": appointment.status = "cancelled"; appointment.save(update_fields=["status"]); messages.success(request, "Appointment cancelled; the slot is available again.")
+    if request.method == "POST" and appointment.status == "booked" and appointment.slot.starts_at > timezone.now():
+        appointment.status = "cancelled"
+        appointment.save(update_fields=["status"])
+        messages.success(request, "Local demo booking cancelled. No provider was contacted.")
+    elif request.method == "POST":
+        messages.error(request, "Only a future local booking can be cancelled.")
     return redirect("appointments")
 
 @login_required
 def chat_history(request):
     query = request.GET.get("q", "").strip()
-    items = request.user.chat_messages.all()
+    items = request.user.chat_messages.select_related("conversation").all()
     if query: items = items.filter(content__icontains=query)
     return render(request, "portal/history.html", {"items": items, "query": query})
 
@@ -168,25 +230,84 @@ def hospitals_page(request):
         "icu": request.GET.get("icu") == "1",
         "trauma": request.GET.get("trauma") == "1",
         "specialty": request.GET.get("specialty", "").strip(),
+        "facility_type": request.GET.get("facility_type", "").strip(),
+        "trust_category": request.GET.get("trust_category", "").strip(),
+        "source_category": request.GET.get("source_category", "").strip(),
     }
-    hospitals = search_hospitals(**filters)
-    return render(request, "portal/hospitals.html", {"hospitals": hospitals, "map_hospitals": hospitals, "filters": filters})
+    source_errors = []
+    results = discover_providers(
+        result_types="hospital", **filters,
+        include_osm=bool(filters["location"] or (filters["latitude"] and filters["longitude"])),
+        source_errors=source_errors,
+    )
+    hospitals = [item for item in results if item["result_type"] == "hospital"]
+    mapped = [item for item in results if item["result_type"] == "osm_facility"]
+    location_error = next((error for error in source_errors if error["source"] == "Location"), None)
+    if not (filters["location"] or filters["latitude"] or filters["longitude"]):
+        location_status = "Location lookup: not requested."
+    elif filters["latitude"] and filters["longitude"] or resolve_manual_location(filters["location"]):
+        location_status = "Location input: explicit coordinates accepted."
+    elif location_error:
+        location_status = f"Location lookup: {location_error['reason']} (status {location_error['status_code'] or 'not provided'})."
+    else:
+        location_status = "Location lookup: resolved."
+    provider_search_status = f"Provider search: {len(hospitals)} MediReach facility record(s), {len(mapped)} mapped listing(s), {len(source_errors)} source error(s)."
+    location_attribution = "Location search: OpenStreetMap Nominatim contributors." if filters["location"] and not any(error["source"] == "Location" for error in source_errors) and not ("," in filters["location"] and all(part.strip().replace(".", "", 1).replace("-", "", 1).isdigit() for part in filters["location"].split(",", 1))) else ""
+    return render(request, "portal/hospitals.html", {
+        "hospitals": hospitals, "mapped_facilities": mapped,
+        "map_hospitals": results, "filters": filters, "source_errors": source_errors,
+          "location_attribution": location_attribution, "location_status": location_status,
+          "provider_search_status": provider_search_status,
+    })
 
 
 def hospitals_api(request):
     if request.method != "GET":
         return JsonResponse({"error": "GET required"}, status=405)
-    results = search_hospitals(
+    source_errors = []
+    results = discover_providers(
+        result_types="hospital",
         query=request.GET.get("q", ""),
         location=request.GET.get("location", ""),
         latitude=request.GET.get("lat"),
         longitude=request.GET.get("lon"),
+        facility_type=request.GET.get("facility_type", ""),
+        trust_category=request.GET.get("trust_category", ""),
+        source_category=request.GET.get("source_category", ""),
         emergency=request.GET.get("emergency") == "1",
         icu=request.GET.get("icu") == "1",
         trauma=request.GET.get("trauma") == "1",
         specialty=request.GET.get("specialty", ""),
+        include_osm=bool(request.GET.get("location") or (request.GET.get("lat") and request.GET.get("lon"))),
+        source_errors=source_errors,
     )
-    return JsonResponse({"results": results})
+    return JsonResponse({"results": results, "source_errors": source_errors})
+
+
+def osm_facilities_api(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=405)
+    try:
+        payload = json.loads(request.body or b"{}")
+        if not isinstance(payload, dict):
+            raise ValueError("A JSON object is required.")
+        latitude = payload.get("latitude")
+        longitude = payload.get("longitude")
+        radius_km = payload.get("radius_km", 5)
+        if latitude is None or longitude is None:
+            raise ValueError("Latitude and longitude are required.")
+        results = search_mapped_facilities(latitude, longitude, radius_km)
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+        return JsonResponse({"error": str(exc), "results": []}, status=400)
+    except FacilityDiscoveryError as exc:
+        return JsonResponse({"error": str(exc), "results": []}, status=503)
+    return JsonResponse({
+        "results": results,
+        "source": "OpenStreetMap",
+        "attribution": "© OpenStreetMap contributors",
+        "trust_label": "OpenStreetMap mapped — not independently verified",
+        "radius_km": float(radius_km),
+    })
 
 
 def hospital_details_api(request, hospital_id):
@@ -199,11 +320,63 @@ def hospital_details_api(request, hospital_id):
 
 
 def doctors_api(request):
-    return JsonResponse({"results": search_doctors(
+    if request.method != "GET":
+        return JsonResponse({"error": "GET required"}, status=405)
+    source_errors = []
+    results = discover_providers(
+        result_types="doctor",
         specialty=request.GET.get("specialty", ""),
         location=request.GET.get("location", ""),
         query=request.GET.get("q", ""),
-    )})
+        trust_category=request.GET.get("trust_category", ""),
+        source_category=request.GET.get("source_category", ""),
+        include_osm=bool(request.GET.get("location")), source_errors=source_errors,
+    )
+    return JsonResponse({"results": results, "source_errors": source_errors})
+
+
+def provider_discovery_api(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required", "results": []}, status=405)
+    try:
+        payload = json.loads(request.body or b"{}")
+        if not isinstance(payload, dict):
+            raise ValueError("A JSON object is required.")
+        result_types = payload.get("result_types", ["doctor", "hospital"])
+        if not (
+            isinstance(result_types, str)
+            or isinstance(result_types, list) and all(isinstance(item, str) for item in result_types)
+        ):
+            raise ValueError("result_types must be a text value or an array of text values.")
+        for field in ("query", "facility_type", "specialty", "location", "trust_category", "source_category"):
+            if field in payload and not isinstance(payload[field], str):
+                raise ValueError(f"{field} must be text.")
+        for field in ("include_osm", "emergency", "icu", "trauma"):
+            if field in payload and not isinstance(payload[field], bool):
+                raise ValueError(f"{field} must be a boolean.")
+        source_errors = []
+        results = discover_providers(
+            result_types=result_types,
+            query=payload.get("query", ""),
+            facility_type=payload.get("facility_type", ""),
+            specialty=payload.get("specialty", ""),
+            location=payload.get("location", ""),
+            latitude=payload.get("latitude"),
+            longitude=payload.get("longitude"),
+            radius_km=payload.get("radius_km", 5),
+            include_osm=payload.get("include_osm", False) is True,
+            trust_category=payload.get("trust_category", ""),
+            source_category=payload.get("source_category", ""),
+            emergency=payload.get("emergency", False) is True,
+            icu=payload.get("icu", False) is True,
+            trauma=payload.get("trauma", False) is True,
+            source_errors=source_errors,
+        )
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError) as exc:
+        return JsonResponse({"error": str(exc), "results": []}, status=400)
+    except FacilityDiscoveryError as exc:
+        return JsonResponse({"error": str(exc), "results": []}, status=503)
+    return JsonResponse({"results": results, "source_errors": source_errors})
 
 
 def first_aid_page(request, category=None):
@@ -236,7 +409,7 @@ def emergency_summary_api(request):
         facts = payload.get("reported_facts", {})
         if not isinstance(facts, dict):
             return JsonResponse({"error": "reported_facts must be an object"}, status=400)
-    except (json.JSONDecodeError, AttributeError):
+    except (ValueError, UnicodeDecodeError, AttributeError):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
     allowed_fields = ("symptoms", "onset", "temperature", "relevant_information", "actions_taken")
     clean_facts = {}
@@ -312,7 +485,7 @@ def emergency_contacts_api(request):
         return JsonResponse({"error": "Sign in to save personal emergency contacts"}, status=401)
     try:
         payload = json.loads(request.body)
-    except json.JSONDecodeError:
+    except (ValueError, UnicodeDecodeError):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
     form = EmergencyContactForm(payload)
     if not form.is_valid():
@@ -332,7 +505,21 @@ def emergency_profile(request):
         contact.save()
         messages.success(request, "Emergency contact saved to your account.")
         return redirect("emergency_profile")
-    return render(request, "portal/emergency_profile.html", {"form": form, "contacts": request.user.emergency_contacts.all()})
+    return render(request, "portal/emergency_profile.html", {"form": form, "contacts": request.user.emergency_contacts.all(), "editing_contact": None})
+
+
+@login_required
+def edit_emergency_contact(request, contact_id):
+    contact = get_object_or_404(EmergencyContact, pk=contact_id, user=request.user)
+    form = EmergencyContactForm(request.POST or None, instance=contact)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Emergency contact updated in your account.")
+        return redirect("emergency_profile")
+    return render(request, "portal/emergency_profile.html", {
+        "form": form, "contacts": request.user.emergency_contacts.all(),
+        "editing_contact": contact,
+    })
 
 
 @login_required
@@ -347,19 +534,23 @@ def delete_emergency_contact(request, contact_id):
 
 @login_required
 def referrals_page(request):
-    form = ReferralForm(request.POST or None)
+    initial = {"hospital": request.GET.get("hospital")} if request.method == "GET" and request.GET.get("hospital") else None
+    form = ReferralForm(request.POST or None, initial=initial)
     if request.method == "POST" and form.is_valid():
         referral = form.save(commit=False)
         referral.patient = request.user
         referral.save()
-        messages.success(request, "Demonstration referral enquiry submitted.")
+        messages.success(request, "Demo referral request recorded locally. It has not been sent to the facility.")
         return redirect("my_referrals")
     return render(request, "portal/referral_form.html", {"form": form})
 
 
 @login_required
 def my_referrals(request):
-    return render(request, "portal/referrals.html", {"referrals": request.user.referrals.select_related("hospital")})
+    return render(request, "portal/referrals.html", {
+        "referrals": request.user.referrals.select_related("hospital").order_by("-created_at"),
+        "enquiries": request.user.hospital_enquiries.select_related("hospital").order_by("-created_at"),
+    })
 
 
 @login_required
@@ -368,8 +559,10 @@ def referrals_api(request):
         return JsonResponse({"error": "POST required"}, status=405)
     try:
         payload = json.loads(request.body)
-    except json.JSONDecodeError:
+    except (ValueError, UnicodeDecodeError):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "A JSON object is required"}, status=400)
     form = ReferralForm(payload)
     if not form.is_valid():
         return JsonResponse({"errors": form.errors.get_json_data()}, status=400)
@@ -380,19 +573,31 @@ def referrals_api(request):
 
 
 def hospital_enquiry(request):
-    form = HospitalEnquiryForm(request.POST or None)
+    initial = {}
+    if request.method == "GET" and request.GET.get("hospital"):
+        initial["hospital"] = request.GET.get("hospital")
+    form = HospitalEnquiryForm(request.POST or None, initial=initial)
     if request.method == "POST" and form.is_valid():
         enquiry = form.save(commit=False)
         enquiry.patient = request.user if request.user.is_authenticated else None
         enquiry.save()
-        messages.success(request, "Demonstration enquiry received. This is not an admission request.")
+        if enquiry.patient_id:
+            messages.success(request, "Demo enquiry saved to your account. It has not been sent to the hospital.")
+        else:
+            messages.success(request, "Demo enquiry saved locally. It has not been sent to the hospital, and it cannot be tracked from an account.")
         return redirect("hospital_detail", hospital_id=enquiry.hospital_id)
     return render(request, "portal/enquiry_form.html", {"form": form})
 
 
 def hospital_detail(request, hospital_id):
     hospital = get_object_or_404(Hospital.objects.prefetch_related("services", "doctors"), pk=hospital_id)
-    return render(request, "portal/hospital_detail.html", {"hospital": hospital})
+    facility_data = get_hospital_details(hospital.pk)
+    return render(request, "portal/hospital_detail.html", {
+        "hospital": hospital,
+        "doctors": [serialize_doctor(doctor) for doctor in doctors_for_hospital(hospital)],
+        "facility_data": facility_data,
+        "has_valid_coordinates": bool(facility_data and facility_data["latitude"] is not None and facility_data["longitude"] is not None),
+    })
 
 
 def _hospital_admin_profile(request):
@@ -466,7 +671,7 @@ def hospital_admin_services_api(request):
         updates = payload.get("services")
         if not isinstance(updates, list):
             return JsonResponse({"error": "services must be an array"}, status=400)
-    except (json.JSONDecodeError, AttributeError):
+    except (ValueError, UnicodeDecodeError, AttributeError):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
     results = []
     for item in updates:
@@ -501,16 +706,19 @@ def update_referral_status(request, referral_id):
     profile = _hospital_admin_profile(request)
     try:
         payload = json.loads(request.body)
-    except json.JSONDecodeError:
+    except (ValueError, UnicodeDecodeError):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "A JSON object is required"}, status=400)
     status = payload.get("status")
     allowed = {value for value, _ in Referral.STATUS_CHOICES}
     referral = get_object_or_404(Referral, pk=referral_id, hospital=profile.hospital)
-    if status not in allowed:
+    if not isinstance(status, str) or status not in allowed:
         return JsonResponse({"error": "Invalid referral status"}, status=400)
-    referral.status = status
-    referral.save(update_fields=["status", "updated_at"])
-    AuditLog.objects.create(administrator=request.user, hospital=profile.hospital, action="referral_status_updated", details={"referral_id": referral.pk, "status": status})
+    with transaction.atomic():
+        referral.status = status
+        referral.save(update_fields=["status", "updated_at"])
+        AuditLog.objects.create(administrator=request.user, hospital=profile.hospital, action="referral_status_updated", details={"referral_id": referral.pk, "status": status})
     return JsonResponse({"id": referral.pk, "status": referral.status})
 
 
@@ -521,14 +729,17 @@ def update_enquiry_status(request, enquiry_id):
     profile = _hospital_admin_profile(request)
     try:
         payload = json.loads(request.body)
-    except json.JSONDecodeError:
+    except (ValueError, UnicodeDecodeError):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "A JSON object is required"}, status=400)
     status = payload.get("status")
     allowed = {value for value, _ in HospitalEnquiry.STATUS_CHOICES}
     enquiry = get_object_or_404(HospitalEnquiry, pk=enquiry_id, hospital=profile.hospital)
-    if status not in allowed:
+    if not isinstance(status, str) or status not in allowed:
         return JsonResponse({"error": "Invalid enquiry status"}, status=400)
-    enquiry.status = status
-    enquiry.save(update_fields=["status", "updated_at"])
-    AuditLog.objects.create(administrator=request.user, hospital=profile.hospital, action="enquiry_status_updated", details={"enquiry_id": enquiry.pk, "status": status})
+    with transaction.atomic():
+        enquiry.status = status
+        enquiry.save(update_fields=["status", "updated_at"])
+        AuditLog.objects.create(administrator=request.user, hospital=profile.hospital, action="enquiry_status_updated", details={"enquiry_id": enquiry.pk, "status": status})
     return JsonResponse({"id": enquiry.pk, "status": enquiry.status})

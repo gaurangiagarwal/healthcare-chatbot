@@ -1,39 +1,17 @@
-{% extends 'portal/base.html' %}{% block title %}Appointments{% endblock %}{% block content %}
+{% extends 'portal/base.html' %}
+{% block title %}Appointments{% endblock %}
+{% block content %}
 <h1 class="h2 fw-bold">My appointments</h1>
-<p class="text-secondary">Your visit schedule and appointment history.</p>
+<p class="text-secondary">Local demo booking records are not confirmed by a provider. MediReach has not contacted a provider.</p>
 <div class="panel mt-4">
   {% for appt in appointments %}
   <div class="list-row flex-wrap">
+    <div><strong>{{ appt.slot.doctor.name }}</strong><div class="small text-secondary">{{ appt.slot.doctor.specialization }} · {{ appt.slot.starts_at|date:'M j, Y · g:i A' }}</div></div>
     <div>
-      <strong>{{ appt.slot.doctor.name }}</strong>
-      <div class="small text-secondary">
-        {{ appt.slot.doctor.specialization }} · {{ appt.slot.starts_at|date:'M j, Y · g:i A' }}
-      </div>
-    </div>
-    <div>
-      <span
-        class="badge {% if appt.status == 'booked' %}text-bg-success{% else %}text-bg-secondary{% endif %}"
-        >{{ appt.get_status_display }}</span
-      >{% if appt.status == 'booked' and appt.slot.starts_at > now %}
-      <form
-        method="post"
-        action="{% url 'cancel_appointment' appt.id %}"
-        class="d-inline"
-      >
-        {% csrf_token %}<button
-          class="btn btn-sm btn-outline-danger ms-2"
-        >
-          Cancel
-        </button>
-      </form>
-      {% endif %}
+      {% if appt.status == 'booked' and appt.slot.starts_at <= now %}<span class="badge text-bg-secondary">Past local request</span>{% elif appt.status == 'booked' %}<span class="badge text-bg-warning">Pending request · not provider-confirmed</span>{% else %}<span class="badge text-bg-secondary">{{ appt.get_status_display }} · local</span>{% endif %}
+      {% if appt.status == 'booked' and appt.slot.starts_at > now %}<form method="post" action="{% url 'cancel_appointment' appt.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-outline-danger ms-2" type="submit">Cancel local booking</button></form>{% endif %}
     </div>
   </div>
-  {% empty %}
-  <p>
-    No appointments to show yet.
-    <a href="{% url 'doctors' %}">Find a doctor</a>.
-  </p>
-  {% endfor %}
+  {% empty %}<div class="empty-state"><strong>No local bookings yet</strong><p>Find a directory profile to browse future local slots.</p><a class="btn btn-outline-primary" href="{% url 'doctors' %}">Find a doctor</a></div>{% endfor %}
 </div>
 {% endblock %}

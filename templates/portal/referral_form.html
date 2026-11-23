@@ -1,1 +1,7 @@
-{% extends 'portal/base.html' %}{% block title %}Referral enquiry · MediReach{% endblock %}{% block content %}<h1>Referral enquiry</h1><p>Coordination demo only, not an admission request or emergency dispatch.</p><div class="card p-4"><form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Submit enquiry</button></form></div>{% endblock %}
+{% extends 'portal/base.html' %}
+{% block title %}Referral request · MediReach{% endblock %}
+{% block content %}
+<h1>Prepare a referral request</h1>
+<p>This demonstration form saves a request in MediReach. It is not sent to a hospital, does not confirm acceptance, and is not an admission or emergency dispatch request.</p>
+<div class="card p-4"><form method="post" novalidate>{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary" type="submit">Save local referral request</button></form></div>
+{% endblock %}

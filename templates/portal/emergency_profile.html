@@ -1,1 +1,19 @@
-{% extends 'portal/base.html' %}{% block title %}Emergency profile · MediReach{% endblock %}{% block content %}<h1>Emergency contacts</h1><p>Saved privately. Contacts are not automatically notified.</p><div class="card p-4 mb-4"><form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Save contact</button></form></div>{% for c in contacts %}<div class="card p-3 mb-2 d-flex flex-row justify-content-between"><span>{{ c.name }} · <a href="tel:{{ c.phone }}">{{ c.phone }}</a> {{ c.relationship }}</span><form method="post" action="{% url 'delete_emergency_contact' c.id %}">{% csrf_token %}<button class="btn btn-sm btn-outline-danger">Remove</button></form></div>{% empty %}<p>No saved contacts.</p>{% endfor %}{% endblock %}
+{% extends 'portal/base.html' %}
+{% block title %}Emergency profile · MediReach{% endblock %}
+{% block content %}
+<h1>Emergency contacts</h1>
+<p>Contacts are saved privately to your account. MediReach does not call or notify them.</p>
+<div class="card p-4 mb-4">
+  <h2 class="h5">{% if editing_contact %}Edit contact{% else %}Add a contact{% endif %}</h2>
+  <form method="post" action="{% if editing_contact %}{% url 'edit_emergency_contact' editing_contact.pk %}{% else %}{% url 'emergency_profile' %}{% endif %}" novalidate>
+    {% csrf_token %}
+    {% for field in form %}<div class="mb-3"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger" role="alert">{{ error }}</div>{% endfor %}{% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}</div>{% endfor %}
+    <button class="btn btn-primary" type="submit">{% if editing_contact %}Save changes{% else %}Save contact{% endif %}</button>
+    {% if editing_contact %}<a class="btn btn-outline-secondary" href="{% url 'emergency_profile' %}">Cancel edit</a>{% endif %}
+  </form>
+</div>
+<section aria-labelledby="saved-contacts-heading"><h2 class="h5" id="saved-contacts-heading">Saved contacts</h2>
+  {% for contact in contacts %}<article class="card p-3 mb-2 d-flex flex-row justify-content-between align-items-center gap-2"><span><strong>{{ contact.name }}</strong> · <a href="tel:{{ contact.phone }}">{{ contact.phone }}</a>{% if contact.relationship %} · {{ contact.relationship }}{% endif %}</span><div class="d-flex gap-2"><a class="btn btn-sm btn-outline-primary" href="{% url 'edit_emergency_contact' contact.pk %}">Edit</a><form method="post" action="{% url 'delete_emergency_contact' contact.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">Remove</button></form></div></article>
+  {% empty %}<div class="empty-state"><strong>No emergency contacts saved</strong><p>Add a trusted contact for your own reference. MediReach will not notify them.</p></div>{% endfor %}
+</section>
+{% endblock %}
