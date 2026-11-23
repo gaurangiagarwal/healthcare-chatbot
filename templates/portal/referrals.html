@@ -1,1 +1,12 @@
-{% extends 'portal/base.html' %}{% block title %}My enquiries · MediReach{% endblock %}{% block content %}<h1>My referral enquiries</h1><p>For urgent care call 112 or contact a facility directly.</p>{% for r in referrals %}<div class="card p-3 mb-3"><strong>{{ r.hospital.name }} · {{ r.get_status_display }}</strong><p>{{ r.summary }}</p><small>{{ r.created_at|date:'M j, Y H:i' }}</small></div>{% empty %}<p>No enquiries yet.</p>{% endfor %}{% endblock %}
+{% extends 'portal/base.html' %}
+{% block title %}My requests · MediReach{% endblock %}
+{% block content %}
+<h1>My locally saved requests</h1>
+<p>Requests and statuses shown here are stored in MediReach. They do not confirm delivery to or acknowledgement by a hospital. For urgent care call 112 or contact a facility directly.</p>
+<section class="section-block"><div class="section-heading"><div><p class="eyebrow">CARE COORDINATION</p><h2>Referral requests</h2></div><a class="btn btn-outline-primary" href="{% url 'referral_new' %}">Prepare referral request</a></div>
+  {% for item in referrals %}<article class="card p-3 mb-3"><strong>{{ item.hospital.name }} · Local status: {{ item.get_status_display }}</strong><p>{{ item.summary }}</p><small>Saved {{ item.created_at|date:'M j, Y H:i' }} · Not confirmed by a provider</small></article>{% empty %}<div class="empty-state"><strong>No referral requests saved</strong><p>You can prepare a local demonstration request if needed.</p></div>{% endfor %}
+</section>
+<section class="section-block"><div class="section-heading"><div><p class="eyebrow">FACILITY QUESTIONS</p><h2>General enquiries</h2></div><a class="btn btn-outline-primary" href="{% url 'hospital_enquiry' %}">Prepare general enquiry</a></div>
+  {% for item in enquiries %}<article class="card p-3 mb-3"><strong>{{ item.hospital.name }} · Local status: {{ item.get_status_display }}</strong><p>{{ item.message }}</p><small>Saved {{ item.created_at|date:'M j, Y H:i' }} · Not delivered to the hospital</small></article>{% empty %}<div class="empty-state"><strong>No general enquiries saved to your account</strong><p>Signed-in submissions appear here. Anonymous submissions cannot be tracked here.</p></div>{% endfor %}
+</section>
+{% endblock %}

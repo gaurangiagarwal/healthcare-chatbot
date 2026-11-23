@@ -1,33 +1,29 @@
-{% extends 'portal/base.html' %}{% block content %}<a
-  href="{% url 'doctors' %}"
-  >← Doctor directory</a
->
-<div class="panel mt-3">
-  <span class="badge text-bg-light text-primary"
-    >{{ doctor.specialization }}</span
-  >
+{% extends 'portal/base.html' %}
+{% block title %}{{ doctor.name }}{% endblock %}
+{% block content %}
+<p><a href="{% url 'doctors' %}">← Doctor directory</a></p>
+<article class="panel mt-3">
+  {% for label in provider.specialties %}<span class="badge text-bg-light text-primary me-1">{{ label }}</span>{% empty %}<span class="badge text-bg-light text-primary">{{ provider.specialty }}</span>{% endfor %}
   <h1 class="h2 fw-bold mt-3">{{ doctor.name }}</h1>
-  <p>
-    {{ doctor.qualification }} · {{ doctor.experience }} years
-    experience
-  </p>
-  <p>{{ doctor.bio }}</p>
-  {% if doctor.fee %}
-  <p>Consultation fee: ₹{{ doctor.fee }}</p>
-  {% endif %}
-  <hr />
-  <h2 class="h5 fw-bold">Available appointments</h2>
+  <p class="status-chip trust-status {{ provider.provider_status }}">{{ provider.trust_label }}</p>
+  {% for facility in provider.facilities %}<p>{{ facility.name }} · {{ facility.city }}{% if facility.is_demo %} · Demo affiliation, not verified{% endif %}</p>{% endfor %}
+  {% for source in provider.sources %}<p class="small">Source: {{ source.source_name }}{% if source.source_url %} · <a href="{{ source.source_url }}" rel="noopener noreferrer">Source record</a>{% endif %}</p>{% endfor %}
+  {% for contact in provider.contacts %}<p>{{ contact.type|title }}: {{ contact.value }} <small>{{ contact.label }}</small></p>{% endfor %}
+  {% if provider.contact_route %}<p><a href="{{ provider.contact_route }}">Hospital contact route</a> <small>Directory route; not a verified doctor contact</small></p>{% endif %}
+  {% if provider.qualification %}<p>{{ provider.qualification }} · {{ provider.qualification_label }}</p>{% else %}<p>{{ provider.qualification_label }}.</p>{% endif %}
+  {% if doctor.fee %}<p>{% if doctor.verification_status == 'demo' %}Demonstration fee:{% else %}Listed fee:{% endif %} ₹{{ doctor.fee }}</p>{% endif %}
+  <hr>
+  <h2 class="h5 fw-bold">Available local slots</h2>
+  <p class="text-secondary">These slots are stored in MediReach. Submitting a booking records it locally; no provider is contacted and no appointment is confirmed.</p>
   {% for slot in slots %}
   <div class="list-row">
     <span>{{ slot.starts_at|date:'l, M j, Y · g:i A' }}</span>
-    <form method="post" action="{% url 'book_appointment' slot.id %}">
-      {% csrf_token %}<button class="btn btn-primary btn-sm">
-        Book slot
-      </button>
+    <form method="post" action="{% url 'book_appointment' slot.pk %}">
+      {% csrf_token %}<input type="hidden" name="doctor_id" value="{{ doctor.pk }}"><button class="btn btn-primary btn-sm" type="submit">Request this local slot</button>
     </form>
   </div>
   {% empty %}
-  <p>No future slots available. Please check back later.</p>
+  <div class="empty-state"><strong>No future local slots are available</strong><p>Check another doctor or return later.</p></div>
   {% endfor %}
-</div>
+</article>
 {% endblock %}

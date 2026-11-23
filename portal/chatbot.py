@@ -204,7 +204,7 @@ def _doctor_recommendation_request(message):
 
 def _doctor_contact_reply():
     return (
-        "CareBridge's doctor directory uses fictional demo profiles and does not store phone numbers, "
+        "MediReach's doctor directory uses fictional demo profiles and does not store phone numbers, "
         "so I can't give you a verified doctor's name and number. Use Find a doctor in the navigation "
         "to browse the sample profiles and appointment slots. For real care, contact your local clinic "
         "or use an official provider directory. For an emergency, call your local emergency number."

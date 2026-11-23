@@ -53,15 +53,15 @@ class BookingFlowTests(TestCase):
         self.doctor=Doctor.objects.create(name="Dr. Test",specialization="Family Medicine",experience=4,qualification="MBBS")
         self.slot=AppointmentSlot.objects.create(doctor=self.doctor,starts_at=timezone.now()+timedelta(days=2))
     def test_successful_booking(self):
-        self.client.force_login(self.user); response=self.client.post(reverse("book_appointment",args=[self.slot.pk])); self.assertRedirects(response,reverse("appointments")); self.assertTrue(Appointment.objects.filter(patient=self.user,slot=self.slot,status="booked").exists())
+        self.client.force_login(self.user); response=self.client.post(reverse("book_appointment",args=[self.slot.pk]), {"doctor_id": self.doctor.pk}); self.assertRedirects(response,reverse("appointments")); self.assertTrue(Appointment.objects.filter(patient=self.user,slot=self.slot,status="booked").exists())
     def test_taken_slot_rejected(self):
-        Appointment.objects.create(patient=self.other,slot=self.slot); self.client.force_login(self.user); self.client.post(reverse("book_appointment",args=[self.slot.pk])); self.assertFalse(Appointment.objects.filter(patient=self.user,slot=self.slot).exists())
+        Appointment.objects.create(patient=self.other,slot=self.slot); self.client.force_login(self.user); self.client.post(reverse("book_appointment",args=[self.slot.pk]), {"doctor_id": self.doctor.pk}); self.assertFalse(Appointment.objects.filter(patient=self.user,slot=self.slot).exists())
     def test_cancel_releases_slot(self):
-        appt=Appointment.objects.create(patient=self.user,slot=self.slot); self.client.force_login(self.user); self.client.post(reverse("cancel_appointment",args=[appt.pk])); appt.refresh_from_db(); self.assertEqual(appt.status,"cancelled"); self.client.post(reverse("book_appointment",args=[self.slot.pk])); self.assertTrue(Appointment.objects.filter(patient=self.user,slot=self.slot,status="booked").exists())
+        appt=Appointment.objects.create(patient=self.user,slot=self.slot); self.client.force_login(self.user); self.client.post(reverse("cancel_appointment",args=[appt.pk])); appt.refresh_from_db(); self.assertEqual(appt.status,"cancelled"); self.client.post(reverse("book_appointment",args=[self.slot.pk]), {"doctor_id": self.doctor.pk}); self.assertTrue(Appointment.objects.filter(patient=self.user,slot=self.slot,status="booked").exists())
     def test_cannot_cancel_another_patients_appointment(self):
         appt=Appointment.objects.create(patient=self.other,slot=self.slot); self.client.force_login(self.user); self.assertEqual(self.client.post(reverse("cancel_appointment",args=[appt.pk])).status_code,404)
     def test_past_slot_cannot_be_booked(self):
-        past=AppointmentSlot.objects.create(doctor=self.doctor,starts_at=timezone.now()-timedelta(days=1)); self.client.force_login(self.user); self.client.post(reverse("book_appointment",args=[past.pk])); self.assertFalse(Appointment.objects.filter(slot=past).exists())
+        past=AppointmentSlot.objects.create(doctor=self.doctor,starts_at=timezone.now()-timedelta(days=1)); self.client.force_login(self.user); self.client.post(reverse("book_appointment",args=[past.pk]), {"doctor_id": self.doctor.pk}); self.assertFalse(Appointment.objects.filter(slot=past).exists())
     def test_doctor_search(self):
         self.client.force_login(self.user); self.assertContains(self.client.get(reverse("doctors"),{"q":"Family"}),"Dr. Test"); self.assertNotContains(self.client.get(reverse("doctors"),{"q":"Neurology"}),"Dr. Test")
 

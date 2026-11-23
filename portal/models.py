@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -20,6 +21,10 @@ class Doctor(models.Model):
     hospital = models.ForeignKey("Hospital", on_delete=models.SET_NULL, null=True, blank=True, related_name="doctors")
     contact_route = models.CharField(max_length=240, blank=True, help_text="A directory URL or hospital contact route; do not enter unverified phone numbers.")
     verification_status = models.CharField(max_length=24, default="demo", choices=[("demo", "Demo data"), ("confirmed", "Hospital confirmed"), ("verified", "Independently verified"), ("unknown", "Unknown"), ("expired", "Expired")])
+    registration_number = models.CharField(max_length=128, blank=True, default="")
+    professional_status = models.CharField(max_length=12, choices=[("active", "Active"), ("inactive", "Inactive"), ("unknown", "Unknown")], default="unknown")
+    specialties = models.ManyToManyField("Specialty", through="DoctorSpecialty", related_name="doctors", blank=True)
+    facilities = models.ManyToManyField("Hospital", through="DoctorHospitalAffiliation", related_name="affiliated_doctors", blank=True)
     def __str__(self): return f"{self.name} — {self.specialization}"
 
 class Hospital(models.Model):
@@ -36,6 +41,8 @@ class Hospital(models.Model):
     is_demo = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    facility_type = models.CharField(max_length=24, choices=[("hospital", "Hospital"), ("clinic", "Clinic"), ("diagnostic_centre", "Diagnostic centre"), ("imaging_centre", "Imaging centre"), ("pharmacy", "Pharmacy"), ("other", "Other")], null=True, blank=True, default=None)
+    operational_status = models.CharField(max_length=24, choices=[("operational", "Operational"), ("temporarily_closed", "Temporarily closed"), ("permanently_closed", "Permanently closed"), ("unknown", "Unknown")], default="unknown")
     class Meta:
         ordering = ["city", "name"]
     @property
@@ -158,3 +165,163 @@ class MedicalNote(models.Model):
     body = models.TextField(max_length=5000)
     created_at = models.DateTimeField(auto_now_add=True)
     class Meta: ordering = ["-created_at"]
+
+
+class Specialty(models.Model):
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(max_length=120, unique=True)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        indexes = [models.Index(fields=["is_active", "name"], name="specialty_active_name_idx")]
+
+
+class ProviderSourceRecord(models.Model):
+    SOURCE_TYPES = [("imported", "Imported"), ("provider_submission", "Provider submission"), ("manual_entry", "Manual entry"), ("demo_data", "Demo data"), ("legacy_unattributed", "Legacy unattributed"), ("other", "Other")]
+    doctor = models.ForeignKey(Doctor, on_delete=models.PROTECT, null=True, blank=True, related_name="source_records")
+    hospital = models.ForeignKey(Hospital, on_delete=models.PROTECT, null=True, blank=True, related_name="source_records")
+    source_type = models.CharField(max_length=24, choices=SOURCE_TYPES)
+    external_id = models.CharField(max_length=255, blank=True, default="")
+    source_name = models.CharField(max_length=120)
+    source_url = models.URLField(blank=True)
+    retrieved_at = models.DateTimeField(null=True, blank=True)
+    source_updated_at = models.DateTimeField(null=True, blank=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="provider_source_submissions")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=(models.Q(doctor__isnull=False, hospital__isnull=True) | models.Q(doctor__isnull=True, hospital__isnull=False)), name="provider_source_one_owner"),
+            models.UniqueConstraint(fields=["source_type", "source_name", "external_id"], condition=~models.Q(external_id=""), name="prov_src_external_id_uniq"),
+        ]
+        indexes = [models.Index(fields=["doctor", "source_type"], name="provsource_doc_type_idx"), models.Index(fields=["hospital", "source_type"], name="provsource_hosp_type_idx")]
+
+    def clean(self):
+        super().clean()
+        if bool(self.doctor_id) == bool(self.hospital_id):
+            raise ValidationError("A source record must belong to exactly one doctor or hospital.")
+
+
+class DoctorSpecialty(models.Model):
+    doctor = models.ForeignKey(Doctor, on_delete=models.CASCADE, related_name="specialty_links")
+    specialty = models.ForeignKey(Specialty, on_delete=models.PROTECT, related_name="doctor_links")
+    is_primary = models.BooleanField(default=False)
+    source_record = models.ForeignKey(ProviderSourceRecord, on_delete=models.SET_NULL, null=True, blank=True, related_name="doctor_specialty_links")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["doctor", "specialty"], name="doctor_specialty_uniq"), models.UniqueConstraint(fields=["doctor"], condition=models.Q(is_primary=True), name="doctor_one_primary_specialty")]
+        indexes = [models.Index(fields=["specialty", "doctor"], name="docspecialty_spec_doc_idx")]
+
+    def clean(self):
+        super().clean()
+        if self.source_record_id and self.source_record.doctor_id != self.doctor_id:
+            raise ValidationError({"source_record": "Source record must belong to this doctor."})
+
+
+class DoctorHospitalAffiliation(models.Model):
+    RELATIONSHIP_TYPES = [("employed", "Employed"), ("visiting", "Visiting"), ("consulting", "Consulting"), ("other", "Other"), ("unknown", "Unknown")]
+    doctor = models.ForeignKey(Doctor, on_delete=models.PROTECT, related_name="affiliations")
+    hospital = models.ForeignKey(Hospital, on_delete=models.PROTECT, related_name="doctor_affiliations")
+    relationship_type = models.CharField(max_length=24, choices=RELATIONSHIP_TYPES, default="unknown")
+    is_primary = models.BooleanField(default=False)
+    is_current = models.BooleanField(default=True)
+    valid_from = models.DateField(null=True, blank=True)
+    valid_until = models.DateField(null=True, blank=True)
+    source_record = models.ForeignKey(ProviderSourceRecord, on_delete=models.SET_NULL, null=True, blank=True, related_name="affiliations")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["doctor", "hospital"], condition=models.Q(is_current=True), name="doctor_current_facility_uniq"),
+            models.UniqueConstraint(fields=["doctor"], condition=models.Q(is_current=True, is_primary=True), name="doctor_one_current_primary_facility"),
+            models.CheckConstraint(condition=(models.Q(valid_from__isnull=True) | models.Q(valid_until__isnull=True) | models.Q(valid_until__gte=models.F("valid_from"))), name="doctor_affiliation_valid_dates"),
+        ]
+        indexes = [models.Index(fields=["doctor", "is_current"], name="affiliation_doc_current_idx"), models.Index(fields=["hospital", "is_current"], name="affiliation_hosp_current_idx")]
+
+    def clean(self):
+        super().clean()
+        if self.is_primary and not self.is_current:
+            raise ValidationError({"is_primary": "Only a current affiliation can be primary."})
+        if self.source_record_id and self.source_record.doctor_id != self.doctor_id and self.source_record.hospital_id != self.hospital_id:
+            raise ValidationError({"source_record": "Source record must belong to this doctor or this hospital."})
+
+
+class ProviderVerification(models.Model):
+    VERIFICATION_TYPES = [("identity", "Identity"), ("registration", "Registration"), ("qualification", "Qualification"), ("facility_identity", "Facility identity"), ("facility_operation", "Facility operation"), ("other", "Other")]
+    SOURCE_TYPES = [("manual_review", "Manual review"), ("official_registry", "Official registry"), ("provider_submission", "Provider submission"), ("facility_confirmation", "Facility confirmation"), ("other", "Other")]
+    STATUSES = [("pending", "Pending"), ("verified", "Verified"), ("rejected", "Rejected"), ("revoked", "Revoked")]
+    doctor = models.ForeignKey(Doctor, on_delete=models.PROTECT, null=True, blank=True, related_name="verification_records")
+    hospital = models.ForeignKey(Hospital, on_delete=models.PROTECT, null=True, blank=True, related_name="verification_records")
+    verification_type = models.CharField(max_length=32, choices=VERIFICATION_TYPES)
+    status = models.CharField(max_length=16, choices=STATUSES, default="pending")
+    source_type = models.CharField(max_length=24, choices=SOURCE_TYPES)
+    evidence_reference = models.CharField(max_length=500, blank=True)
+    verified_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="provider_verifications")
+    verified_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    review_notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=(models.Q(doctor__isnull=False, hospital__isnull=True) | models.Q(doctor__isnull=True, hospital__isnull=False)), name="verification_one_owner"),
+            models.CheckConstraint(condition=(~models.Q(status="verified") | (models.Q(evidence_reference__gt="") & models.Q(verified_by__isnull=False) & models.Q(verified_at__isnull=False))), name="verification_requires_evidence_reviewer_time"),
+        ]
+        indexes = [models.Index(fields=["doctor", "verification_type", "created_at"], name="verify_doc_type_date_idx"), models.Index(fields=["hospital", "verification_type", "created_at"], name="verify_hosp_type_date_idx")]
+
+    def save(self, *args, **kwargs):
+        # No dedicated MediReach reviewer permission exists yet. Keep verified
+        # decisions disabled until an authorized creation service is approved.
+        if self.status == "verified":
+            raise ValidationError("Provider verification is disabled until reviewer permissions are configured.")
+        return super().save(*args, **kwargs)
+
+
+class ProviderContact(models.Model):
+    CONTACT_TYPES = [("phone", "Phone"), ("email", "Email"), ("website", "Website"), ("fax", "Fax"), ("directory_route", "Directory route"), ("other", "Other")]
+    VERIFICATION_STATUSES = [("unverified", "Unverified"), ("pending", "Pending"), ("verified", "Verified"), ("rejected", "Rejected"), ("revoked", "Revoked")]
+    doctor = models.ForeignKey(Doctor, on_delete=models.PROTECT, null=True, blank=True, related_name="provider_contacts")
+    hospital = models.ForeignKey(Hospital, on_delete=models.PROTECT, null=True, blank=True, related_name="provider_contacts")
+    contact_type = models.CharField(max_length=24, choices=CONTACT_TYPES)
+    value = models.CharField(max_length=512)
+    is_primary = models.BooleanField(default=False)
+    verification_status = models.CharField(max_length=16, choices=VERIFICATION_STATUSES, default="unverified")
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verified_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="provider_contact_verifications")
+    verification_evidence_reference = models.CharField(max_length=500, blank=True)
+    source_record = models.ForeignKey(ProviderSourceRecord, on_delete=models.PROTECT, null=True, blank=True, related_name="provider_contacts")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=(models.Q(doctor__isnull=False, hospital__isnull=True) | models.Q(doctor__isnull=True, hospital__isnull=False)), name="provider_contact_one_owner"),
+            models.CheckConstraint(condition=(~models.Q(verification_status="verified") | (models.Q(verified_at__isnull=False) & models.Q(verified_by__isnull=False) & models.Q(verification_evidence_reference__gt=""))), name="provider_contact_verified_has_evidence"),
+            models.UniqueConstraint(fields=["doctor", "contact_type"], condition=models.Q(doctor__isnull=False, is_primary=True), name="doctor_primary_contact_type_uniq"),
+            models.UniqueConstraint(fields=["hospital", "contact_type"], condition=models.Q(hospital__isnull=False, is_primary=True), name="hospital_primary_contact_type_uniq"),
+        ]
+        indexes = [models.Index(fields=["doctor", "contact_type", "verification_status"], name="contact_doc_type_status_idx"), models.Index(fields=["hospital", "contact_type", "verification_status"], name="contact_hosp_type_status_idx")]
+
+    def clean(self):
+        super().clean()
+        if bool(self.doctor_id) == bool(self.hospital_id):
+            raise ValidationError("A contact must belong to exactly one doctor or hospital.")
+        if self.source_record_id:
+            same_owner = (
+                self.source_record.doctor_id == self.doctor_id
+                if self.doctor_id
+                else self.source_record.hospital_id == self.hospital_id
+            )
+            if not same_owner:
+                raise ValidationError({"source_record": "Source record must belong to the same contact owner."})

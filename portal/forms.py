@@ -38,20 +38,57 @@ class ChatForm(forms.Form):
 class EmergencyContactForm(forms.ModelForm):
     class Meta: model = EmergencyContact; fields = ("name", "phone", "relationship")
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "form-control")
+
 class HospitalEnquiryForm(forms.ModelForm):
-    class Meta: model = HospitalEnquiry; fields = ("hospital", "message")
+    class Meta:
+        model = HospitalEnquiry
+        fields = ("hospital", "message")
+        labels = {"hospital": "Facility", "message": "Your enquiry"}
+        help_texts = {
+            "message": "Keep this general and concise. Do not include emergency requests or unnecessary sensitive details. This is saved locally and is not sent to the facility.",
+        }
+        widgets = {"message": forms.Textarea(attrs={"rows": 4, "maxlength": 1000})}
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["hospital"].queryset = Hospital.objects.order_by("city", "name")
+        self.fields["hospital"].widget.attrs.setdefault("class", "form-select")
+        self.fields["message"].widget.attrs.setdefault("class", "form-control")
 
 class ReferralForm(forms.ModelForm):
-    class Meta: model = Referral; fields = ("hospital", "summary")
+    class Meta:
+        model = Referral
+        fields = ("hospital", "summary")
+        labels = {"hospital": "Requested facility", "summary": "Reason for referral"}
+        help_texts = {
+            "summary": "Briefly explain the care you are requesting. Share only information needed to understand the request; up to 1,000 characters.",
+        }
+        widgets = {"summary": forms.Textarea(attrs={"rows": 4, "maxlength": 1000})}
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["hospital"].queryset = Hospital.objects.order_by("city", "name")
+        self.fields["hospital"].widget.attrs.setdefault("class", "form-select")
+        self.fields["summary"].widget.attrs.setdefault("class", "form-control")
 
 class HospitalProfileForm(forms.ModelForm):
     class Meta: model = Hospital; fields = ("name", "city", "address", "latitude", "longitude", "phone", "website")
+
+    def clean_latitude(self):
+        value = self.cleaned_data.get("latitude")
+        if value is not None and not -90 <= value <= 90:
+            raise forms.ValidationError("Latitude must be between -90 and 90 degrees.")
+        return value
+
+    def clean_longitude(self):
+        value = self.cleaned_data.get("longitude")
+        if value is not None and not -180 <= value <= 180:
+            raise forms.ValidationError("Longitude must be between -180 and 180 degrees.")
+        return value
 
 class HospitalServiceForm(forms.ModelForm):
     class Meta: model = HospitalService; fields = ("service_type", "specialty_name", "status", "details", "source", "expires_at")

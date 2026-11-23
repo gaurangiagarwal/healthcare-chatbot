@@ -1,1 +1,7 @@
-{% extends 'portal/base.html' %}{% block title %}Hospital enquiry · MediReach{% endblock %}{% block content %}<h1>Send a hospital enquiry</h1><p>Not monitored for emergencies and does not request admission.</p><div class="card p-4"><form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Submit enquiry</button></form></div>{% endblock %}
+{% extends 'portal/base.html' %}
+{% block title %}General hospital enquiry · MediReach{% endblock %}
+{% block content %}
+<h1>Prepare a general hospital enquiry</h1>
+<p>This demonstration form saves your message in MediReach. It is not sent to or acknowledged by the hospital, is not monitored for emergencies, and does not request admission.</p>
+<div class="card p-4"><form method="post" novalidate>{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary" type="submit">Save local enquiry</button></form></div>
+{% endblock %}

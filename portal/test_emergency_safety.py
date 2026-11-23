@@ -34,6 +34,37 @@ class EmergencyScreeningTests(TestCase):
                 self.assertEqual(result["emergency_number"], "112")
                 self.assertEqual(result["urgency_level"], "emergency")
 
+    def test_general_emergency_assistance_request_escalates_before_normal_intents(self):
+        result, state = respond("I need emergency medical assistance")
+        self.assertEqual(result["intent"], "medical_emergency")
+        self.assertEqual(result["response_type"], "emergency_alert")
+        self.assertTrue(result["emergency"])
+        self.assertIn("Call India's emergency number 112 now", result["reply"])
+        self.assertIn("emergency_assistance_request", result["warning_signs"])
+        self.assertTrue(any(action["href"] == "tel:112" for action in result["actions"]))
+        self.assertEqual(state["stage"], "emergency")
+
+    def test_existing_welcome_prompt_triggers_emergency_screening(self):
+        template = (Path(__file__).resolve().parent.parent / "templates/portal/chatbot.html").read_text()
+        match = re.search(r'data-prompt="([^"]+)"', template)
+        self.assertIsNotNone(match, "The emergency suggestion should be present on the chat welcome screen")
+        prompt = match.group(1)
+        self.assertEqual(prompt, "I need emergency medical assistance")
+        result, _ = respond(prompt)
+        self.assertEqual(result["response_type"], "emergency_alert")
+        self.assertTrue(any(action["href"] == "tel:112" for action in result["actions"]))
+
+    def test_emergency_assistance_request_does_not_escalate_negated_historical_or_informational_text(self):
+        for message in (
+            "I don't need emergency medical assistance",
+            "I do not need emergency medical assistance",
+            "I needed emergency medical assistance last week",
+            "What is emergency medical assistance?",
+            "I have an emergency contact saved",
+        ):
+            with self.subTest(message=message):
+                self.assertFalse(assess_emergency(message)["is_emergency"])
+
     def test_multiple_signs_are_all_reported(self):
         result = assess_emergency("My mother has chest pressure and is struggling to breathe")
         self.assertEqual(result["matched_warning_signs"], ["chest_pain", "breathing_difficulty"])
@@ -118,6 +149,18 @@ class EmergencyScreeningTests(TestCase):
         self.assertIn("new Set(['tel:112', '/hospitals/'])", script)
         self.assertIn(".filter((action) => !emergencyLinksAlreadyRendered.has(action.href))", script)
 
+    @override_settings(SECURE_SSL_REDIRECT=False)
+    def test_emergency_call_cta_is_wired_into_the_chat_page(self):
+        user = User.objects.create_user("emergency-cta-patient", password="Strong-test-password-55")
+        self.client.force_login(user)
+        page = self.client.get(reverse("chatbot"))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Call 112")
+        self.assertContains(page, "portal/chatbot.js")
+        script = (Path(__file__).resolve().parent.parent / "static/portal/chatbot.js").read_text()
+        self.assertIn("case 'emergency_alert'", script)
+        self.assertIn("link('Call 112 now', 'tel:112'", script)
+
     def test_loss_of_consciousness_variants_are_screened(self):
         for message in ("I passed out.", "I fainted."):
             with self.subTest(message=message):
@@ -158,8 +201,9 @@ class EmergencyScreeningTests(TestCase):
     def test_normal_chat_response_contract_remains_compatible(self):
         result, _ = respond("I have a cough")
         self.assertIn("reply", result)
-        self.assertEqual(result["intent"], "general_health")
-        self.assertEqual(result["response_type"], "assistant_message")
+        self.assertEqual(result["intent"], "structured_symptom_followup")
+        self.assertEqual(result["response_type"], "symptom_followup")
+        self.assertEqual(result["question"], "When did it start?")
         self.assertFalse(result["emergency"])
 
 

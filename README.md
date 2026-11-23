@@ -1,104 +1,244 @@
-<<<<<<< HEAD
-# CareBridge — Healthcare Chatbot and Patient Assistance System
+# MediReach
 
-CareBridge is a college Agile mini project built with Django. It gives patients a protected dashboard, private profile and notes, educational rule-based health chat, and a fictional doctor directory with appointment booking. The chatbot is not a medical device and does not diagnose or prescribe.
+**A healthcare assistance and care-coordination platform**
 
-## Problem statement and objectives
+MediReach is a Django-based healthcare assistance platform intended to help people navigate healthcare services, access basic health guidance, find healthcare facilities, and coordinate care through a single application.
 
-Patients benefit from a single simple place to explore general health information, keep track of their interactions, and find appointment options. This project demonstrates authentication, patient-owned records, safe rule-based responses, transactional booking, responsive UI, test-driven feature development, and a four-sprint Agile plan.
+The project combines patient-facing features with a longer-term plan for trustworthy provider discovery, emergency-first assistance, and care coordination.
 
-## Features
+> **Project status:** Under active development. Some features are implemented, some are partial, and several capabilities in the product vision are still planned. This README distinguishes the current implementation from future goals.
 
-- Django registration/login/logout, hashed passwords, profile editing, protected routes.
-- AJAX chat for fever, cough, headache, stomach pain, sore throat, prevention, unknown questions, and emergency warning terms. Conversations are saved per account.
-- Searchable fictional doctor directory, seeded future slots, booking/cancellation, unique active booking constraint.
-- Patient-only chat history search, appointment history, notes, and activity dashboard.
-- Bootstrap responsive layout, SQLite local database, PostgreSQL-compatible production database URL, WhiteNoise static files, CI workflow.
+## 1. Product vision
 
-## Technology stack
+Finding the right healthcare service can involve several disconnected steps: understanding where to seek help, locating a suitable doctor or facility, contacting providers, arranging appointments, and keeping track of personal healthcare information.
 
-Python 3.12+; Django 5.x; SQLite locally; PostgreSQL in production; HTML/CSS, Bootstrap 5, JavaScript Fetch API; Django TestCase; Git and GitHub Actions. Bootstrap is loaded from its public CDN; for offline deployment, vendor the assets locally.
+MediReach aims to bring these activities together in one platform.
 
-## Local installation
+The long-term product vision includes:
 
-```powershell
-py -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-Copy-Item .env.example .env
-python manage.py migrate
-python manage.py seed_demo
-python manage.py runserver
-```
+- Emergency-first assistance and clear escalation guidance.
+- Structured symptom navigation and basic first-aid information.
+- Discovery of doctors, hospitals, clinics, diagnostic centres and other healthcare resources.
+- Location-aware healthcare facility discovery and maps.
+- Patient profiles, emergency contacts, notes and healthcare history.
+- Appointment requests and appointment-status tracking.
+- Referrals and enquiries between patients and healthcare facilities.
+- A hybrid healthcare assistant using deterministic safety rules, reviewed medical knowledge and optional local AI.
+- Trust indicators that communicate where provider information came from and whether it has been verified.
 
-Open http://127.0.0.1:8000/. Register a patient account through the site. There are no seeded patient passwords. Create a Django admin account if desired with `python manage.py createsuperuser`.
+MediReach is intended to support healthcare navigation and coordination. It is not a replacement for qualified medical professionals or emergency services.
 
-The chatbot keeps a separate context for each patient's conversation. Use **New conversation** in the chat page to start with empty context. Bot replies appear after a short three-second typing indicator.
+## 2. Medical and service limitations
 
-Settings load the optional `.env` file from the project root. Keep its generated secret private; `.gitignore` excludes it.
+MediReach must not be presented as a medical diagnostic or treatment system.
 
-## Checks and tests
+- The chatbot must not claim to diagnose a disease.
+- It must not prescribe medicines or replace professional medical advice.
+- Emergency guidance must take priority over ordinary chatbot responses.
+- A telephone link to an emergency number does not mean an emergency call was placed.
+- Saving an appointment request does not mean a provider confirmed an appointment.
+- Saving a referral or enquiry does not prove that it was delivered, accepted or acted upon.
+- A mapped healthcare location is not automatically a verified provider.
+- Demo records must never be presented as real, verified healthcare professionals or facilities.
 
-```powershell
-python manage.py check
-python manage.py makemigrations portal  # only if model changes have no migration yet
-python manage.py migrate
-python manage.py test
-```
+In India, the emergency number 112 is used by the application for its emergency call action. The application must not claim that it automatically dispatches emergency services.
 
-The tests use Django's isolated test database and fictional fixtures. They do not verify production deployment or an actual team Agile ceremony. CI runs check, migration, and tests on pushes and pull requests.
+## 3. Technology stack
 
-## Project structure
+The existing project uses:
 
-```text
-config/                 settings, URLs, WSGI
-portal/                 models, views, forms, chatbot, tests, seed command
-templates/portal/       responsive pages
-static/portal/          styles
-docs/                   Agile planning, estimation, reports, project report
-.github/workflows/       CI
-```
+| Area | Technology |
+|---|---|
+| Backend | Python, Django |
+| Local development database | SQLite |
+| Frontend | Django templates, HTML, CSS and JavaScript |
+| Interactive map | Leaflet |
+| Map tiles | OpenStreetMap |
+| Testing | Django test framework |
+| Optional future local AI | Ollama |
+| Nearby mapped facility discovery | OpenStreetMap / Overpass (transient, coordinate-based) |
+| Text location resolution | OpenStreetMap Nominatim, user-triggered, cached |
+| Planned official facility registry adapter | ABDM HFR, subject to access approval |
 
-## Agile sprint breakdown
+Exact versions must be taken from requirements.txt and project configuration.
 
-1. US-01/02: authentication, patient profile, dashboard.
-2. US-03/04: safe rule-based assistant, AJAX, saved messages.
-3. US-05/06: clinician search and transactional appointments.
-4. US-07/08: chat/appointment history, private notes, dashboard improvements.
+The project currently follows a zero-paid-API budget constraint. Do not introduce paid APIs without explicit team approval.
 
-The docs contain a product backlog, sample planning poker, 10-day sprint plans, ATDD scenarios, Definition of Done, sample capacity, reporting templates, and Jira/Trello-ready CSV. Names, points, capacity, and sprint outcomes are planning examples. Have the actual team review estimates and record real ceremony outcomes. Do not mark the sample board Done based on this README.
+## 4. Current implementation
 
-## Demonstration checklist
+The following status reflects the previous project audit and reported P0/P1 work. It is not a claim that every workflow has been independently browser-tested.
 
-- **Sprint 1:** register; verify duplicate email and invalid login behavior; edit profile; confirm dashboard redirects signed-out visitors.
-- **Sprint 2:** send supported symptom, unknown question, and emergency term; inspect dynamic responses; refresh and review saved conversation.
-- **Sprint 3:** run `seed_demo`; search a specialty; book an open future slot; confirm same slot cannot be booked twice; cancel and book again.
-- **Sprint 4:** inspect and search own chat history; add personal note; review upcoming/history status and dashboard counts; sign in as another account and verify records are isolated.
+Existing application areas include:
 
-## Git / GitHub
+- User registration and authentication.
+- Patient profiles and patient-specific information.
+- Chat conversations and persisted chat messages.
+- Rule-based chatbot intent handling.
+- Deterministic emergency-assistance detection and emergency call action.
+- Doctor directory and doctor detail pages.
+- Hospital directory and hospital detail pages.
+- Hospital map using Leaflet and OpenStreetMap tile configuration.
+- Local appointment and slot workflows.
+- Referral and hospital enquiry workflows.
+- Patient emergency contacts.
+- Patient notes and healthcare history.
+- Patient dashboard and navigation.
+- Hospital-admin functionality with hospital-scoped access.
 
-Recommended branches: `main`, `develop`, and `feature/sprint1-authentication`, `feature/sprint2-chatbot`, `feature/sprint3-appointments`, `feature/sprint4-history`. Use pull requests and review against the Definition of Done. This workspace does not assert a remote GitHub repository exists.
+Important current limitations:
 
-```powershell
-git init
-git add .
-git commit -m "Build CareBridge healthcare assistance system"
-gh repo create healthcare-chatbot-patient-assistance --public --source=. --remote=origin --push
-```
+- Provider search is not a complete live or officially verified healthcare directory. Text location lookup is best-effort and public-service based.
+- Demo doctors and facilities are fictional and unverified.
+- Map rendering and external tile loading still require browser verification in the isolated validation instance.
+- A successful local appointment operation does not confirm an appointment with a real provider.
+- Referral and enquiry records do not prove that an external provider received or accepted them.
+- Anonymous enquiries cannot be tracked by the submitter.
+- Diagnostic-centre discovery is not yet implemented as a complete feature.
+- Nominatim lookup is subject to its public usage policy, limited to one request per second per application, and must not be used for autocomplete or bulk geocoding. The current limiter coordinates workers on one host; multi-host deployments need shared rate limiting or a different provider. Set `MEDIREACH_GEOCODER_URL` only to a compatible HTTPS Nominatim endpoint; the default is the public Nominatim search service.
+- Leaflet 1.9.4 does not set a tile image referrer policy by default. The OSM tile layer explicitly uses `strict-origin-when-cross-origin` so the browser sends the page origin as the tile Referer; verify the actual request and response in the target browser because browser privacy tools or deployment proxies can still remove it.
+- Location failures distinguish invalid or unrecognized place input, rate limiting, timeout, malformed responses and service/network errors. The visible “map service busy” response originates from the Overpass facility search, not Nominatim.
+- Nominatim lookup uses a 10-second request timeout and caches successful lookups for 24 hours and empty results for 10 minutes. A returned 429 triggers a temporary per-process cooldown and same-query negative cache; no automatic retry is performed.
+- Emergency contacts are stored, but automatic emergency-contact notification is not implemented.
+- The existing chatbot is not a fully integrated, medically reviewed AI assistant.
+- Production-level privacy, security, retention and deployment readiness have not been established.
 
-The last command requires GitHub CLI authentication and a deliberate choice of public/private visibility. Review patient data and repository visibility before publishing. Do not commit `.env` or real patient information.
+See docs/FEATURES.md for the detailed feature matrix.
 
-## Deployment (Render or similar)
+## 5. Project structure
 
-Use a Python web service with build command `pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate`, start command `gunicorn config.wsgi:application`. Configure `SECRET_KEY` to a generated secret, `DEBUG=False`, `ALLOWED_HOSTS` to the service hostname, `DATABASE_URL` to a persistent PostgreSQL instance, and `SECURE_SSL_REDIRECT=True`. Run migrations as a release/pre-deploy command where supported. Then run `python manage.py seed_demo` if fictional demo data is wanted. Never use SQLite on ephemeral production disk for persistent patient records.
+The application follows a Django project structure.
 
-Before production: use HTTPS; restrict hosts; rotate secrets; verify backups and retention; configure database access and monitoring; review privacy/legal obligations for health data; use a real secure healthcare system for actual patient information. The sample app is educational and not certified for clinical use. No deployment URL is claimed.
+Conceptual structure:
 
-## Screenshots
+MediReach/
+    manage.py
+    requirements.txt
+    README.md
+    AGENTS.md
+    <django_project_package>/
+        settings.py
+        urls.py
+    portal/
+        models.py
+        views.py
+        forms.py
+        urls.py
+        services/
+        migrations/
+    templates/
+        portal/
+    static/
+        portal/
+    docs/
+    db.sqlite3
 
-Add your own screenshots after running the application. Do not use fabricated screenshots as evidence of a deployment or team review.
-=======
-# healthcare-chatbot
-Healthcare Chatbot developed using Django and Agile Scrum methodology
->>>>>>> 609fc60b4060c96c9e045369310bf9cfb704ce79
-This project is made by Kashvi, Divisha, Gaurangi and Zara.
+This is an illustrative structure, not a replacement for the actual repository tree.
+
+## 6. Windows development setup
+
+Prerequisites:
+
+- Windows 10 or later.
+- A Python version compatible with the installed dependencies.
+- Visual Studio Code or another Python-compatible editor.
+- Git, if working from a Git repository.
+
+Check Python:
+
+    python --version
+
+Create a virtual environment:
+
+    python -m venv .venv
+
+Activate in PowerShell:
+
+    .\.venv\Scripts\Activate.ps1
+
+Or in Command Prompt:
+
+    .venv\Scripts\activate.bat
+
+Install dependencies:
+
+    python -m pip install --upgrade pip
+    pip install -r requirements.txt
+
+Inspect the project's settings and environment-variable usage before creating a local environment file.
+
+Never commit secrets, credentials, API keys, private patient information, local database files or private environment files.
+
+## 7. Critical database safety notice
+
+A previous local `migrate` and `seed_demo` operation ran against the existing project db.sqlite3.
+
+The operation reported:
+- Four fictional doctors created.
+- 168 new slots created.
+
+The database was not inspected or restored afterward.
+
+Therefore:
+
+- Treat the existing database as modified.
+- Do not assume that it is clean or unchanged.
+- Do not run migrations, seed commands, database resets or cleanup commands against it.
+- Preserve the database and any associated SQLite WAL/SHM files before approved recovery activity.
+- Identify a known-good backup before attempting restoration.
+- Obtain explicit approval before database operations.
+- Use a separate disposable development database for approved tests and development.
+
+Do not claim that a backup exists or that restoration has occurred.
+
+## 8. Development and testing
+
+Before running any application or database command, consult AGENTS.md and the safety gates in docs/FINAL_VALIDATION_CHECKLIST.md. Do not use the unverified project database.
+
+The reported P1 verification included:
+
+- 118 Django tests passed.
+- `python manage.py check` passed.
+- `python manage.py makemigrations --check --dry-run` reported no changes.
+- Modified JavaScript files passed `node --check`.
+- Local HTTP checks against an isolated temporary database returned HTTP 200 for selected hospital-related resources.
+
+Browser rendering and external tile loading were not verified.
+
+These are historical reported results, not tests performed by this documentation task.
+
+## 9. Documentation index
+
+- AGENTS.md — mandatory AI coding instructions.
+- docs/MEDIREACH_PROJECT_MASTER_PLAN.md — central project plan and phase tracker.
+- docs/ARCHITECTURE.md — technical architecture.
+- docs/DATABASE_SCHEMA.md — database design.
+- docs/API_REFERENCE.md — application endpoints.
+- docs/FEATURES.md — feature status.
+- docs/product-backlog.md — product backlog.
+- docs/project-report.md — project report.
+- docs/capacity-planning.md — capacity planning.
+- docs/planning-poker.md — estimation guidance.
+- docs/report-templates.md — report templates.
+- docs/scrum-board.csv — project board.
+- docs/sprint-plans.md — sprint planning.
+- docs/tdd-atdd.md — test-driven development notes.
+- docs/DEMO_SCRIPT.md — controlled patient-journey demonstration.
+- docs/KNOWN_LIMITATIONS.md — source-reviewed limitations and release constraints.
+- docs/FINAL_VALIDATION_CHECKLIST.md — isolated validation plan and release gates.
+
+## 10. Project contribution principles
+
+Every contribution must:
+
+1. Preserve existing functionality.
+2. Follow the documented architecture.
+3. Avoid duplicate models, services and business logic.
+4. Protect patient data and ownership boundaries.
+5. Avoid fabricated healthcare information.
+6. Include appropriate tests.
+7. Document API, schema and behaviour changes.
+8. Explain database and migration impact.
+9. Update the project master plan.
+10. Be reviewed before being treated as complete.
+
+MediReach is developed phase by phase. Do not begin a future phase until its dependencies and acceptance criteria have been reviewed.

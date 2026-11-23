@@ -1,1 +1,35 @@
-{% extends 'portal/base.html' %}{% block title %}{{ hospital.name }}{% endblock %}{% block content %}<p class="eyebrow"><a href="{% url 'hospitals' %}">FIND HOSPITALS</a> / FACILITY PROFILE</p><header class="facility-header"><div><span class="verification-pill {{ hospital.effective_verification_status }}">{{ hospital.effective_verification_status|title }}</span>{% if hospital.is_demo %}<span class="status-chip">Demonstration record</span>{% endif %}<h1>{{ hospital.name }}</h1><p>{{ hospital.address }}, {{ hospital.city }}</p><small>Directory updated {{ hospital.updated_at|date:'M j, Y, g:i A' }}</small></div><div class="facility-actions">{% if hospital.phone and hospital.effective_verification_status == 'verified' or hospital.phone and hospital.effective_verification_status == 'confirmed' %}<a class="btn btn-primary" href="tel:{{ hospital.phone }}">Call facility</a>{% endif %}{% if hospital.latitude and hospital.longitude %}<a class="btn btn-outline-primary" target="_blank" rel="noopener" href="https://www.openstreetmap.org/directions?to={{ hospital.latitude }},{{ hospital.longitude }}">Get directions</a>{% endif %}<a class="btn btn-outline-primary" href="{% url 'hospital_enquiry' %}">Send enquiry</a></div></header><div class="facility-notice"><strong>Availability information</strong><span>Directory status is a dated report, not live capacity, admission confirmation or an emergency department operating guarantee. In an emergency, call 112.</span></div><section class="section-block"><div class="section-heading"><div><p class="eyebrow">FACILITY INFORMATION</p><h2>Services and reported status</h2></div></div><div class="service-grid">{% for service in hospital.services.all %}<article class="service-card"><div class="d-flex justify-content-between gap-2"><h3>{{ service.get_service_type_display }}{% if service.specialty_name %} - {{ service.specialty_name }}{% endif %}</h3><span class="service-status {{ service.effective_status }}">{{ service.effective_status|title }}</span></div><p>{{ service.details|default:'No additional details provided.' }}</p><small>{{ service.source }} · Updated {{ service.updated_at|date:'M j, Y, g:i A' }}{% if service.expires_at %} · Expires {{ service.expires_at|date:'M j, Y' }}{% endif %}</small></article>{% empty %}<div class="empty-state">No services have been listed for this facility.</div>{% endfor %}</div></section><section class="section-block"><div class="section-heading"><div><p class="eyebrow">DIRECTORY PROFILES</p><h2>Doctors listed at this facility</h2></div><a href="{% url 'doctors' %}">Browse directory</a></div><div class="doctor-list">{% for doctor in hospital.doctors.all %}<article class="doctor-row"><span class="doctor-initial">{{ doctor.name|slice:':1' }}</span><div><strong>{{ doctor.name }}</strong><p>{{ doctor.specialization }} · {{ doctor.verification_status|title }}</p></div>{% if doctor.contact_route %}<a href="{{ doctor.contact_route }}">Contact route</a>{% endif %}</article>{% empty %}<p class="empty-state">No doctor profiles are associated with this facility.</p>{% endfor %}</div></section>{% endblock %}
+{% extends 'portal/base.html' %}
+{% block title %}{{ hospital.name }}{% endblock %}
+{% block content %}
+<p class="eyebrow"><a href="{% url 'hospitals' %}">FIND HOSPITALS</a> / FACILITY PROFILE</p>
+<header class="facility-header">
+  <div>
+    <span class="verification-pill {{ facility_data.provider_status }}">{{ facility_data.trust_label }}</span>
+    <h1>{{ hospital.name }}</h1><p>{{ hospital.address }}, {{ hospital.city }}</p>
+    <small>Directory record updated {{ hospital.updated_at|date:'M j, Y, g:i A' }}</small>
+    {% if hospital.is_demo %}<p class="status-chip">Fictional demonstration facility — not a real hospital.</p>{% endif %}
+  </div>
+  <div class="facility-actions">
+    {% if facility_data.phone %}<a class="btn btn-primary" href="tel:{{ facility_data.phone }}">Call facility ({{ facility_data.phone_contact_label }})</a>{% endif %}
+    {% if has_valid_coordinates %}<a class="btn btn-outline-primary" target="_blank" rel="noopener noreferrer" href="https://www.openstreetmap.org/directions?to={{ hospital.latitude }},{{ hospital.longitude }}">Get directions</a>{% endif %}
+    <a class="btn btn-outline-primary" href="{% url 'hospital_enquiry' %}?hospital={{ hospital.pk }}">Prepare general enquiry</a>
+    <a class="btn btn-outline-primary" href="{% url 'referral_new' %}?hospital={{ hospital.pk }}">Prepare referral request</a>
+  </div>
+</header>
+<div class="facility-notice"><strong>Availability and contact information</strong><span>Service statuses are dated reports, not confirmed live capacity, admission confirmation, or an emergency department operating guarantee. Demo status is fictional. Enquiries are saved locally and are not sent to the hospital. In an emergency, call 112.</span></div>
+<section class="section-block"><div class="section-heading"><div><p class="eyebrow">FACILITY INFORMATION</p><h2>Reported services</h2></div></div>
+  {% for source in facility_data.sources %}<p class="small">Source: {{ source.source_name }}{% if source.source_url %} · <a href="{{ source.source_url }}" rel="noopener noreferrer">Source record</a>{% endif %}</p>{% endfor %}
+  {% for contact in facility_data.contacts %}<p>{{ contact.type|title }}: {{ contact.value }} <small>{{ contact.label }}</small></p>{% endfor %}
+  <div class="service-grid">
+    {% for service in hospital.services.all %}
+    <article class="service-card"><div class="d-flex justify-content-between gap-2"><h3>{{ service.get_service_type_display }}{% if service.specialty_name %} — {{ service.specialty_name }}{% endif %}</h3><span class="service-status {{ service.effective_status }}">{% if hospital.is_demo %}Demo status: {{ service.effective_status|title }}{% else %}Reported {{ service.effective_status|title }}{% endif %}</span></div>
+      <p>{{ service.details|default:'No additional details provided.' }}</p>
+      <small>{{ service.source }} · Updated {{ service.updated_at|date:'M j, Y, g:i A' }}{% if service.expires_at %} · Expires {{ service.expires_at|date:'M j, Y' }}{% endif %}</small>
+    </article>
+    {% empty %}<div class="empty-state">No services have been listed for this facility.</div>{% endfor %}
+  </div>
+</section>
+<section class="section-block"><div class="section-heading"><div><p class="eyebrow">DIRECTORY PROFILES</p><h2>Doctors listed at this facility</h2></div><a href="{% url 'doctors' %}">Browse directory</a></div>
+  <div class="doctor-list">{% for doctor in doctors %}<article class="doctor-row"><span class="doctor-initial">{{ doctor.name|slice:':1' }}</span><div><strong>{{ doctor.name }}</strong><p>{{ doctor.specialty }} · {{ doctor.trust_label }}</p></div>{% if doctor.contact_route %}<a href="{{ doctor.contact_route }}">Directory route</a>{% endif %}</article>{% empty %}<p class="empty-state">No current doctor affiliations are recorded for this facility.</p>{% endfor %}</div>
+</section>
+{% endblock %}

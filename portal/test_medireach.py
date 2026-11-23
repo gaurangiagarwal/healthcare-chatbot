@@ -45,7 +45,8 @@ class MediReachServiceTests(TestCase):
 
     def test_hospital_search_location_and_distance(self):
         Hospital.objects.create(name="Demo Mumbai", city="Mumbai", address="DEMO ONLY", latitude=19.076, longitude=72.8777)
-        results = search_hospitals(location="Pune")
+        # Distance is only meaningful when the search origin is explicit.
+        results = search_hospitals(location="Pune", latitude=18.52, longitude=73.85)
         self.assertEqual(results[0]["name"], "Demo North")
         self.assertEqual(len(results), 1)
         self.assertIsNotNone(results[0]["distance_km"])

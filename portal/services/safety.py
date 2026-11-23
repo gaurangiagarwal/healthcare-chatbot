@@ -14,6 +14,18 @@ import re
 
 
 EMERGENCY_RULES = {
+    # An explicit request for emergency help is urgent even when the person
+    # has not described a specific warning sign. Keep this request-shaped so
+    # informational mentions of the word "emergency" do not trigger it.
+    "emergency_assistance_request": (
+        r"\b(?:(?:i|we|someone|somebody|he|she|they)\s+)?"
+        r"(?:need|require|request|want)\s+(?:(?:urgent|immediate)\s+)?"
+        r"(?:emergency(?:\s+medical)?|medical\s+emergency)\s+"
+        r"(?:medical\s+)?(?:assistance|help|care)\b|"
+        r"\bhelp\s+me\s+(?:because|during|in)\s+(?:a\s+)?"
+        r"(?:medical\s+)?emergency\b",
+        None,
+    ),
     "chest_pain": (
         r"\b(?:severe\s+)?chest\s+(?:pain|pressure|tightness)\b|"
         r"\b(?:heart attack|heart-attack)\b",
@@ -90,6 +102,11 @@ _NEGATION_CONSTRUCTION = re.compile(
     r"\b(?:not|isn't|is not|aren't|are not)\s*$",
     re.I,
 )
+_NEGATED_EMERGENCY_REQUEST = re.compile(
+    r"\b(?:do not|don't|doesn't|does not|didn't|did not|can't|cannot|can not|no longer)\s+"
+    r"(?:currently\s+)?(?:need|needs|require|requires|request|requests|want|wants)\b",
+    re.I,
+)
 _NEGATED_AFTER = re.compile(r"^\s*(?:is|are|was|were)?\s*(?:not present|absent|denied|ruled out|gone|resolved)\b", re.I)
 _HISTORICAL = re.compile(
     r"\b(?:history of|old|past|previous|used to have|previously had|had (?:a|an)?|"
@@ -121,6 +138,8 @@ _EXPLICIT_CURRENT = re.compile(
 _HYPOTHETICAL = re.compile(
     r"\b(?:what if|suppose|hypothetically|imagine|in a story|for a school|"
     r"for an assignment|if someone|if a person|if you were|would it be|"
+    r"what can cause|what causes|what are (?:the )?(?:common )?causes? of|"
+    r"what might cause|explain (?:the )?(?:causes?|meaning|definition) of|"
     r"could (?:it|this|that) be|how do you recognize|how to recognize|signs of|"
     r"symptoms of|what is (?:a |an |the )?(?:stroke|seizure|convulsion|anaphylaxis|"
     r"heart attack|chest pain|severe bleeding|difficulty breathing)|"
@@ -152,14 +171,16 @@ def _is_hypothetical(text):
     return bool(_HYPOTHETICAL.search(text))
 
 
-def _is_current_affirmed(text, start, end):
+def _is_current_affirmed(text, start, end, rule=None):
     clause = _context_for(text, start, end)
     boundaries = list(_CLAUSE_BREAK.finditer(text, 0, start))
     clause_start = boundaries[-1].end() if boundaries else 0
     before = text[clause_start:start]
     if _is_hypothetical(clause) and not _EXPLICIT_CURRENT.search(clause) and not _RECENT_EVENT.search(clause):
         return False
-    if _NEGATION_CONSTRUCTION.search(before):
+    if _NEGATION_CONSTRUCTION.search(before) or (
+        rule == "emergency_assistance_request" and _NEGATED_EMERGENCY_REQUEST.search(clause)
+    ):
         return False
     after = text[end:]
     if _NEGATED_AFTER.search(after[:40]):
@@ -184,7 +205,7 @@ def assess_emergency(message):
     for key, (pattern, guide_slug) in EMERGENCY_RULES.items():
         match = next(
             (item for item in re.finditer(pattern, text, re.I)
-             if _is_current_affirmed(text, item.start(), item.end())
+             if _is_current_affirmed(text, item.start(), item.end(), rule=key)
              and not (
                  key == "severe_confusion"
                  and _NON_MEDICAL_CONFUSION.search(_context_for(text, item.start(), item.end()))
